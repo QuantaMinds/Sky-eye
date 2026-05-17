@@ -34,22 +34,26 @@ def _timed(fn: Callable[[], str]) -> CheckResult:
 
 
 def check_gemini() -> CheckResult:
+    """Vertex AI / Gemini 2.5 Flash via the unified google-genai SDK.
+    Auth via Application Default Credentials. Billed to GOOGLE_CLOUD_PROJECT.
+    """
     def run() -> str:
         from google import genai
         from google.genai import types
 
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            raise RuntimeError("GEMINI_API_KEY not set")
-        model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
-        client = genai.Client(api_key=api_key)
+        project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+        if not project:
+            raise RuntimeError("GOOGLE_CLOUD_PROJECT not set")
+        location = os.environ.get("VERTEX_AI_LOCATION", "us-central1")
+        model_name = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+
+        client = genai.Client(vertexai=True, project=project, location=location)
         resp = client.models.generate_content(
-            model=model,
+            model=model_name,
             contents="ping",
-            config=types.GenerateContentConfig(max_output_tokens=1),
+            config=types.GenerateContentConfig(max_output_tokens=1, temperature=0.0),
         )
-        candidates = resp.candidates or []
-        return f"model={model} candidates={len(candidates)}"
+        return f"model={model_name} project={project} chars={len(resp.text or '')}"
 
     return _timed(run)
 

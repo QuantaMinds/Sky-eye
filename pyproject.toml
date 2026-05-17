@@ -12,7 +12,7 @@ license = { text = "Proprietary" }
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
-    "google-genai>=0.3",
+    "google-genai>=2.0",
     "google-cloud-bigquery>=3.25",
     "google-cloud-storage>=2.18",
     "earthengine-api>=1.4",
@@ -31,7 +31,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*"]
+include = ["api*"]
 exclude = ["eye*", "tests*"]
 
 [tool.pytest.ini_options]

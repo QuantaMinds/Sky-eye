@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
-from app.config import get_settings
-from app.routers import health
+from api.config import get_settings
+from api.routers import health, lead_score
 
 settings = get_settings()
 
@@ -12,6 +12,7 @@ app = FastAPI(
 )
 
 app.include_router(health.router)
+app.include_router(lead_score.router)
 
 
 @app.get("/")

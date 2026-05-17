@@ -16,8 +16,10 @@ class Settings(BaseSettings):
     environment: str = Field(default="dev")
     log_level: str = Field(default="INFO")
 
-    gemini_api_key: str = Field(default="", description="Google AI Studio API key for Gemini")
-    gemini_model: str = Field(default="gemini-2.0-flash")
+    # Gemini is invoked via Vertex AI using Application Default Credentials.
+    # No API key needed — auth flows through google.auth.default().
+    gemini_model: str = Field(default="gemini-2.5-flash")
+    vertex_ai_location: str = Field(default="us-central1")
 
     google_cloud_project: str = Field(default="", description="GCP project ID")
     google_application_credentials: str = Field(

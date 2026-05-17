@@ -24,6 +24,10 @@ __pycache__/
 build/
 dist/
 
+# Local cache (Solar API ToS cache + dev cost saver)
+.cache.db
+.cache.db-journal
+
 # Tests / tooling
 .pytest_cache/
 .ruff_cache/

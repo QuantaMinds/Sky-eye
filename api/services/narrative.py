@@ -90,7 +90,21 @@ def _build_prompt(
         "(e.g. 'we don't yet have ownership data') and recommend the installer verify before contact.\n"
         "- NEVER claim the resident is an owner / homeowner, NEVER claim there is or isn't existing "
         "solar, NEVER claim intent unless the corresponding dimension appears in AVAILABLE above.\n"
-        "- Be concrete and reference the real values shown."
+        "- Be concrete and reference the real values shown.\n"
+        "\n"
+        "PRECISION RULES for utility / rate / dollar amounts (truth-first prose):\n"
+        "- The bill_pain source string includes the utility name, representative rate, and "
+        "tariff variant. When mentioning these, hedge with 'approximately' or 'representative'.\n"
+        "  CORRECT:   'approximately $0.27/kWh under LADWP R-1A (representative residential blend)'\n"
+        "  CORRECT:   'estimated annual cost roughly $2,000 at the LADWP residential rate'\n"
+        "  WRONG:     'this home pays exactly $0.273/kWh and will save $1,847 per year'\n"
+        "  WRONG:     any dollar amount to the cent without a hedge word in the same sentence.\n"
+        "- If the bill_pain source says 'unknown' utility or notes confidence='fallback', "
+        "DO NOT name a specific utility. Say 'utility not yet identified for this address' "
+        "and recommend manual verification. Do NOT helpfully fill in 'this is probably LADWP'.\n"
+        "- For NEM regime: 'LADWP has retained 1:1 net metering' is fine if the source says so. "
+        "'SCE NEM 3.0 export compensation is significantly reduced' is fine. Specific export $/kWh "
+        "numbers are NOT fine — those depend on hourly Avoided Cost Calculator values we don't model."
     )
 
 

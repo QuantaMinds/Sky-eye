@@ -21,6 +21,7 @@ from api.models.lead import (
     NRELData,
     ParcelData,
     SolarRoofData,
+    UtilityInfo,
 )
 
 # Anchors used to normalize raw measurements into [0, 1].
@@ -146,18 +147,30 @@ def equity_proxy_dim_from_parcel(parcel: ParcelData) -> DimensionValue:
     )
 
 
-def bill_pain_dim(nrel: NRELData) -> DimensionValue:
+def bill_pain_dim(nrel: NRELData, utility: UtilityInfo | None = None) -> DimensionValue:
+    """Bill-pain score = annual production (kWh) x utility's representative
+    rate ($/kWh), normalized to a $3000/yr full-pain anchor. When utility is
+    unavailable, falls back to the flat $0.30/kWh rate (Phase 1.5c behavior).
+    """
     if not nrel.ac_annual_kwh:
         return DimensionValue(
             value=None, source="NREL PVWatts v8",
             note="No production estimate returned",
         )
-    annual_bill = nrel.ac_annual_kwh * UTILITY_RATE_USD_PER_KWH
+    if utility is None:
+        utility = UtilityInfo()  # all defaults; rate=0.30, confidence=fallback
+    annual_bill = nrel.ac_annual_kwh * utility.representative_rate
     return DimensionValue(
         value=_clip(annual_bill / BILL_PAIN_FULL_USD),
         source=(
-            f"NREL PVWatts v8 (4 kW system) × flat ${UTILITY_RATE_USD_PER_KWH}/kWh "
-            f"= ~${annual_bill:,.0f}/yr proxy"
+            f"NREL PVWatts v8 (4 kW system) x {utility.utility_name} "
+            f"~${utility.representative_rate:.2f}/kWh"
+            + (f" ({utility.tariff_variant})" if utility.tariff_variant else "")
+            + f" = approximately ${annual_bill:,.0f}/yr proxy"
         ),
-        note="Flat-rate proxy; tiered LADWP/SCE rates pending Phase 1.5d",
+        note=(
+            f"confidence={utility.confidence_level}; "
+            + (f"NEM regime: {utility.nem_regime}. " if utility.nem_regime else "")
+            + (utility.rate_source_note[:160] if utility.rate_source_note else "")
+        ),
     )

@@ -86,6 +86,20 @@ class ParcelData(BaseModel):
     ains_at_point: int = 1
 
 
+class UtilityInfo(BaseModel):
+    """Electric utility serving a lat/lng — resolved via ST_CONTAINS against
+    parcels_raw.utility_territories + joined to parcels_raw.utility_rates.
+    See feedback-narrative-precision-must-match-data for confidence_level usage.
+    """
+
+    utility_name: str = "unknown"   # 'LADWP' | 'SCE' | 'unknown'
+    representative_rate: float = 0.30      # $/kWh blended residential
+    tariff_variant: str | None = None      # 'R-1A' | 'TOU-D-PRIME' | None
+    nem_regime: str | None = None          # '1:1 retained' | 'NEM 3.0 (ACC export)' | None
+    confidence_level: str = "fallback"     # 'precise' | 'approximate' | 'fallback'
+    rate_source_note: str = ""
+
+
 class DimensionValue(BaseModel):
     """One dimension's contribution. value=None means data is unavailable."""
 

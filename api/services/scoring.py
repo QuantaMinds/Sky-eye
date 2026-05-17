@@ -18,6 +18,7 @@ from api.models.lead import (
     ParcelData,
     ScoreDimensions,
     SolarRoofData,
+    UtilityInfo,
 )
 from api.services._dimension_builders import (
     bill_pain_dim,
@@ -51,6 +52,7 @@ def compute_score(
     census: CensusData,
     nrel: NRELData,
     parcel: ParcelData | None,
+    utility: UtilityInfo | None = None,
 ) -> tuple[float, ScoreDimensions, str, float]:
     """Returns (score, dimensions, weighting_mode, score_confidence)."""
     if parcel is not None:
@@ -63,7 +65,7 @@ def compute_score(
         roof_potential=roof_potential_dim(roof),
         income_qualification=income_dim(census),
         ownership=ownership,
-        bill_pain=bill_pain_dim(nrel),
+        bill_pain=bill_pain_dim(nrel, utility),
         equity_proxy=equity,
         no_existing_solar=_unavailable(
             "Public Solar API does not expose detected arrays"

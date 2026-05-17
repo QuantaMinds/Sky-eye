@@ -15,6 +15,7 @@ from api.services import (
     parcel_lookup,
     scoring,
     solar_api,
+    utility,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["lead-score"])
@@ -36,21 +37,29 @@ async def score_lead(req: ScoreRequest) -> ScoreResponse:
 
     try:
         geo, cached["geocoding"] = await geocoding.geocode(req.address)
-        # The four post-geocoding services have no inter-dependencies — fan out.
-        # parcel_lookup may return (None, False) if the point is not in any LA
-        # County parcel polygon (out of county, or a road/right-of-way gap).
-        (roof, c_solar), (cens, c_cen), (pv, c_nrel), (parcel, c_parcel) = await asyncio.gather(
+        # The five post-geocoding services have no inter-dependencies — fan out.
+        # parcel_lookup returns (None, False) if outside LA County parcel layer.
+        # utility.lookup_by_point always returns a UtilityInfo (falls back to
+        # 'unknown' row when outside SCE/LADWP territories).
+        (
+            (roof, c_solar), (cens, c_cen), (pv, c_nrel),
+            (parcel, c_parcel), (util, c_util),
+        ) = await asyncio.gather(
             solar_api.get_roof_data(geo.lat, geo.lng, req.address),
             census.get_block_group_data(geo.lat, geo.lng),
             nrel.get_production(geo.lat, geo.lng),
             parcel_lookup.lookup_by_point(geo.lat, geo.lng),
+            utility.lookup_by_point(geo.lat, geo.lng),
         )
-        cached.update(solar=c_solar, census=c_cen, nrel=c_nrel, parcel=c_parcel)
+        cached.update(
+            solar=c_solar, census=c_cen, nrel=c_nrel,
+            parcel=c_parcel, utility=c_util,
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
     score, dims, weighting_mode, confidence = scoring.compute_score(
-        roof, cens, pv, parcel
+        roof, cens, pv, parcel, util,
     )
     text, cached["narrative"] = await narrative.generate_narrative(
         geo.formatted_address, score, dims, confidence

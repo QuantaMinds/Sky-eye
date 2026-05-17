@@ -8,11 +8,11 @@ from fastapi import APIRouter, HTTPException
 
 from api.models.lead import ScoreRequest, ScoreResponse
 from api.services import (
-    assessor,
     census,
     geocoding,
     narrative,
     nrel,
+    parcel_lookup,
     scoring,
     solar_api,
 )
@@ -22,8 +22,9 @@ router = APIRouter(prefix="/api/v1", tags=["lead-score"])
 _DATA_SOURCES = [
     "Google Maps Platform Geocoding API",
     "Google Maps Platform Solar API",
-    "US Census ACS 5-year (2022)",
+    "US Census ACS 5-year (2024 vintage)",
     "NREL PVWatts V8",
+    "LA County Assessor (Rolls 2021-2024, BigQuery)",
     "Google Vertex AI (Gemini 2.5 Flash)",
 ]
 
@@ -36,13 +37,15 @@ async def score_lead(req: ScoreRequest) -> ScoreResponse:
     try:
         geo, cached["geocoding"] = await geocoding.geocode(req.address)
         # The four post-geocoding services have no inter-dependencies — fan out.
-        (roof, c_solar), (cens, c_cen), (pv, c_nrel), (parcel, c_ass) = await asyncio.gather(
+        # parcel_lookup may return (None, False) if the point is not in any LA
+        # County parcel polygon (out of county, or a road/right-of-way gap).
+        (roof, c_solar), (cens, c_cen), (pv, c_nrel), (parcel, c_parcel) = await asyncio.gather(
             solar_api.get_roof_data(geo.lat, geo.lng, req.address),
             census.get_block_group_data(geo.lat, geo.lng),
             nrel.get_production(geo.lat, geo.lng),
-            assessor.get_parcel_data(geo.lat, geo.lng, req.address),
+            parcel_lookup.lookup_by_point(geo.lat, geo.lng),
         )
-        cached.update(solar=c_solar, census=c_cen, nrel=c_nrel, assessor=c_ass)
+        cached.update(solar=c_solar, census=c_cen, nrel=c_nrel, parcel=c_parcel)
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 

@@ -12,17 +12,18 @@ A property with only 60% of dims available can therefore score AT MOST 0.60.
 from __future__ import annotations
 
 from api.models.lead import (
-    AssessorData,
     CensusData,
     DimensionValue,
     NRELData,
+    ParcelData,
     ScoreDimensions,
     SolarRoofData,
 )
 from api.services._dimension_builders import (
     bill_pain_dim,
+    equity_proxy_dim_from_parcel,
     income_dim,
-    ownership_dim,
+    ownership_dim_from_parcel,
     roof_potential_dim,
 )
 
@@ -49,17 +50,21 @@ def compute_score(
     roof: SolarRoofData,
     census: CensusData,
     nrel: NRELData,
-    assessor: AssessorData,
+    parcel: ParcelData | None,
 ) -> tuple[float, ScoreDimensions, str, float]:
     """Returns (score, dimensions, weighting_mode, score_confidence)."""
+    if parcel is not None:
+        ownership = ownership_dim_from_parcel(parcel)
+        equity = equity_proxy_dim_from_parcel(parcel)
+    else:
+        ownership = _unavailable("Address not resolved to any LA County parcel")
+        equity = _unavailable("Address not resolved to any LA County parcel")
     dims = ScoreDimensions(
         roof_potential=roof_potential_dim(roof),
         income_qualification=income_dim(census),
-        ownership=ownership_dim(assessor),
+        ownership=ownership,
         bill_pain=bill_pain_dim(nrel),
-        equity_proxy=_unavailable(
-            "Requires LA Assessor sale/appraisal data (Phase 1.5c)"
-        ),
+        equity_proxy=equity,
         no_existing_solar=_unavailable(
             "Public Solar API does not expose detected arrays"
         ),

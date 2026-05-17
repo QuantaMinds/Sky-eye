@@ -28,6 +28,43 @@ dist/
 .cache.db
 .cache.db-journal
 
+# Local data staging — raw downloads, gzipped CSVs, reprojected NDJSON,
+# unzipped shapefiles. Never commit — pulled fresh from the source on demand.
+.stage/
+
+# Portable binaries (GDAL/ogr2ogr unpacked here, ~hundreds of MB).
+.tools/
+
+# Compressed / binary archive formats — too large for git, fetched on demand
+*.zip
+*.gz
+*.tar
+*.tgz
+*.7z
+
+# Shapefile components — geometry archives belong in GCS, not git
+*.shp
+*.shx
+*.dbf
+*.sbn
+*.sbx
+*.prj
+*.cpg
+*.shp.xml
+*.qix
+
+# Reprojected / intermediate geo formats
+*.jsonl
+*.geojsonl
+*.gdb/
+*.gpkg
+
+# Native binaries (Windows portable installs of GDAL etc.)
+*.dll
+*.exe
+*.lib
+*.pdb
+
 # Tests / tooling
 .pytest_cache/
 .ruff_cache/

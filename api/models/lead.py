@@ -40,9 +40,50 @@ class NRELData(BaseModel):
 
 
 class AssessorData(BaseModel):
-    # Phase 1: always None (real LA Assessor integration deferred to Phase 1.5c).
+    """DEPRECATED — superseded by ParcelData in Phase 1.5c.
+
+    Kept temporarily so existing scoring code that imports AssessorData
+    keeps compiling. New code should use ParcelData.
+    """
+
     owner_occupied: bool | None = None
     year_built: int | None = None
+
+
+class ParcelData(BaseModel):
+    """LA County Assessor parcel record resolved by ST_CONTAINS spatial lookup."""
+
+    apn: str
+    address_situs: str = ""
+    city: str = ""
+    zip: str = ""
+    use_category: str = ""           # 'Residential' | 'Commercial' | ...
+    use_subcategory: str = ""        # 'Single Family Residence' | etc.
+    use_code: str = ""               # 4-digit LA County code
+    is_residential: bool = False
+    is_taxable: bool = False
+    stream: str = "not_residential"  # 'private' | 'dac_sash' | 'not_residential'
+    has_homeowners_exemption: bool = False
+    homeowners_exemption_amount: float | None = None
+    # Prop 13 tenure-start year (older of land/improvement base years).
+    # In BigQuery this is 9999 when both base years are missing; the
+    # parcel_lookup service maps 9999 -> None for truth-first behavior.
+    arms_length_year: int | None = None
+    recording_year: int | None = None
+    year_built: int | None = None
+    sqft_main: int | None = None
+    total_value: float | None = None
+    land_value: float | None = None
+    improvement_value: float | None = None
+    area_m2: float | None = None
+    # "parcel" -> ST_CONTAINS resolved to exactly one AIN at this point.
+    # "building" -> point falls inside a polygon shared by multiple AINs
+    #   (condos, apartment-owned units, etc.). Returned AIN is one of the
+    #   sibling units in the building, NOT necessarily the specific unit
+    #   the caller's address pointed at. See
+    #   feedback-multi-unit-ain-polygon-ambiguity for the consequences.
+    resolution_confidence: str = "parcel"
+    ains_at_point: int = 1
 
 
 class DimensionValue(BaseModel):

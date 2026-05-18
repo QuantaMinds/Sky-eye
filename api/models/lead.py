@@ -86,6 +86,20 @@ class ParcelData(BaseModel):
     ains_at_point: int = 1
 
 
+class DacInfo(BaseModel):
+    """SB-535 Disadvantaged Community status for a point.
+
+    Resolved via ST_CONTAINS against parcels_raw.dac_tracts (OEHHA SB 535
+    tracts, Tribal update 2023/2024). is_dac=True means the point falls
+    inside an SB-535 designated tract — eligible for DAC-SASH program.
+    """
+
+    is_dac: bool = False
+    tract_geoid: str | None = None
+    ces_percentile: float | None = None
+    source_note: str = ""
+
+
 class UtilityInfo(BaseModel):
     """Electric utility serving a lat/lng — resolved via ST_CONTAINS against
     parcels_raw.utility_territories + joined to parcels_raw.utility_rates.
@@ -126,6 +140,12 @@ class ScoreResponse(BaseModel):
     # Fraction of weights backed by real data — 1.0 only if every dim is available.
     score_confidence: float = Field(ge=0, le=1)
     weighting_mode: str  # "all_signals_available" | "available_signals_only" | "no_signals"
+    # Routing stream — 'private' (paid installer), 'dac_sash' (GRID Alternatives /
+    # non-profit), or 'not_residential'. Computed via DAC-SASH eligibility UNION
+    # rule: (in_dac OR non_taxable) AND residential. None if no parcel resolved.
+    stream: str | None = None
+    is_dac: bool | None = None
+    ces_percentile: float | None = None
     dimensions: ScoreDimensions
     narrative: str
     data_sources: list[str]

@@ -25,11 +25,31 @@ from api.models.lead import (
 )
 
 # Anchors used to normalize raw measurements into [0, 1].
-ROOF_KWH_FULL = 15_000.0
-INCOME_FLOOR = 40_000.0
-INCOME_CEIL = 120_000.0
+# ROOF_KWH_FULL was 15_000 through Phase 1.5d; raised to 30_000 on
+# 2026-05-17 after empirical probing of 15 LB residential SFRs against the
+# Solar API showed:
+#   min  8,739    p25  20,190    median  29,677    p75  59,116    max  445,473
+# Solar API's max_kwh_year measures the MAXIMUM array that fits on a roof
+# (often 20-50 panels at 400-500W), NOT a typical 4kW residential install
+# (~6,500 kWh/yr). The old 15k anchor produced saturating-1.0 roof scores
+# for almost every LA residential parcel; 30k = LB median produces real
+# 0.3-1.0 variance. See feedback-solar-api-max-kwh-semantics for full
+# context, including the calibration probe.
+ROOF_KWH_FULL = 30_000.0
 BILL_PAIN_FULL_USD = 3_000.0
-UTILITY_RATE_USD_PER_KWH = 0.30  # Flat proxy; tiered LADWP/SCE pending Phase 1.5d
+UTILITY_RATE_USD_PER_KWH = 0.30  # Phase 1.5c flat fallback; Phase 1.5d adds utility-aware
+# LA-calibrated continuous income curve (Phase 1.5e, refined 2026-05-17).
+# Peak at $130k = "prime paid-solar financing sweet spot" (max federal solar
+# credit utilization + clean loan underwriting). Original stepped bands (50/90/
+# 180/300) were rejected after forensic showed they produced only 2 unique
+# values across 93 sampled parcels (LA Census distribution is bimodal at
+# $50-90k and $90-180k; flat 1.0 across the whole $90-180k zone over-rewarded
+# half the county). The continuous curve produces ~80 unique values across
+# real LA income and pulls the population mean down ~0.10.
+INCOME_LOW_FLOOR = 50_000.0       # below: flat 0.20 (likely DAC-SASH candidate)
+INCOME_PEAK = 130_000.0           # peak 1.00 (prime financing zone)
+INCOME_DECAY_RANGE = 170_000.0    # above peak, decays linearly over $170k window
+INCOME_HIGH_FLOOR = 0.65          # asymptotic floor for $300k+ (saturation tier)
 # Equity formula constants — continuous asymptotic curve (see Prop 13 memory).
 EQUITY_DECAY = 0.95
 # Long-tenure threshold for the "owner without claimed exemption" cohort
@@ -53,22 +73,55 @@ def roof_potential_dim(roof: SolarRoofData) -> DimensionValue:
     )
 
 
+def _continuous_income_score(income: float) -> tuple[float, str]:
+    """Returns (score, band_label) using the continuous LA financing curve.
+
+    Quadratic rise (exponent 1.5) from $50k to $130k peak, linear decay
+    from $130k toward $300k floor of 0.65. Maps the LA income distribution
+    onto a 0.20-1.00 range with continuous output (~80 unique values across
+    real data, vs the prior 5-band stepped version that produced only 2
+    unique values on the 93-parcel forensic sample).
+    """
+    if income < INCOME_LOW_FLOOR:
+        return 0.20, "<$50k low-income / DAC-SASH track"
+    if income <= INCOME_PEAK:
+        ratio = (income - INCOME_LOW_FLOOR) / (INCOME_PEAK - INCOME_LOW_FLOOR)
+        score = 0.20 + (ratio ** 1.5) * 0.80
+        return round(score, 2), f"$50-130k rising toward financing peak"
+    distance = income - INCOME_PEAK
+    score = 1.00 - (distance / INCOME_DECAY_RANGE) * 0.35
+    score = max(INCOME_HIGH_FLOOR, score)
+    return round(score, 2), f">$130k decaying toward saturation floor"
+
+
 def income_dim(census: CensusData) -> DimensionValue:
+    """LA-calibrated continuous income curve (Phase 1.5e refined 2026-05-17).
+
+    Peak at $130k matches the prime paid-solar financing window
+    (max federal credit utilization + clean loan underwriting + healthy
+    free cash flow). Decay above the peak models the saturation effect
+    (high-net-worth tracts more likely to already have solar). Below $50k,
+    flat 0.20 routes leads toward DAC-SASH stream as a low-priority
+    paid-solar candidate.
+    """
     income = census.median_household_income
     if income is None:
         return DimensionValue(
             value=None, source="US Census ACS 2020-2024",
             note=f"No income data for block group {census.block_group_geoid}",
         )
+    score, band = _continuous_income_score(income)
     return DimensionValue(
-        value=_clip((income - INCOME_FLOOR) / (INCOME_CEIL - INCOME_FLOOR)),
+        value=_clip(score),
         source=(
             f"US Census ACS 2020-2024, block group {census.block_group_geoid} "
-            f"(B19013_001E = ${income:,.0f})"
+            f"(B19013_001E = ${income:,.0f}; {band})"
         ),
         note=(
             "Block-group level — neighborhood proxy, not occupant income. "
-            "National anchor window; LA-calibrated window pending Phase 1.5e."
+            "Continuous curve peaks at $130k LA financing sweet-spot, "
+            "decays toward $300k+ saturation tier. Replaces prior 5-band "
+            "stepped version (Phase 1.5e forensic showed bimodal clustering)."
         ),
     )
 

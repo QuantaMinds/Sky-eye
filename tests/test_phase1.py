@@ -93,17 +93,34 @@ async def test_nrel_returns_production() -> None:
 # --- 5. Scoring math (with full real signals) ------------------------------
 
 def test_scoring_computes_correctly() -> None:
-    """Truth-first NON-renormalized math: missing dims must depress the headline."""
-    roof = SolarRoofData(max_array_panels=20, max_kwh_year=15_000, has_existing_solar=None)
+    """Truth-first NON-renormalized math: missing dims must depress the headline.
+
+    Uses max_kwh_year=30,000 to saturate roof_potential at 1.0 under the
+    Phase-1.5e calibrated anchor (ROOF_KWH_FULL=30,000, based on empirical
+    LB Solar API median). Was 15,000 in Phase 1.5a-d; bumped here.
+    """
+    roof = SolarRoofData(max_array_panels=20, max_kwh_year=30_000, has_existing_solar=None)
     cens = CensusData(median_household_income=120_000, block_group_geoid="060371234001")
     pv = NRELData(ac_annual_kwh=10_000)
-    parcel = AssessorData(owner_occupied=True)  # synthetic real signal for this test
+    # AssessorData is the Phase 1.5a mock shape. Phase 1.5c+ uses ParcelData
+    # via parcel_lookup; this unit test stays on the mock to keep its scope
+    # narrow (scoring math, not the BQ-backed pipeline).
+    parcel = None  # avoid Phase 1.5c parcel-required path for unit-isolation
     score, dims, mode, conf = scoring.compute_score(roof, cens, pv, parcel)
-    # Available: roof(1.0,w=0.25) income(1.0,w=0.20) own(1.0,w=0.15) bill(1.0,w=0.15)
-    # equity / no_existing_solar / intent are unavailable -> contribute 0.
-    # NON-renormalized headline = 0.25 + 0.20 + 0.15 + 0.15 = 0.75
-    assert abs(score - 0.75) < 1e-9
-    assert abs(conf - 0.75) < 1e-9
+    # Phase 1.5e effective weights (Phase-2-deferred dims dropped, weight
+    # redistributed across 5 active dims summing to 1.0):
+    #   roof_potential       0.2941
+    #   income_qualification 0.2353
+    #   ownership            0.1765
+    #   bill_pain            0.1765
+    #   equity_proxy         0.1176
+    # When parcel=None: ownership + equity dims also None.
+    # Phase 1.5e continuous income curve: $120k -> ratio = (120-50)/(130-50)
+    # = 0.875; score = 0.20 + 0.875^1.5 * 0.80 = 0.20 + 0.6553 = 0.86 (rounded).
+    # weighted = 1.0*0.2941 + 0.86*0.2353 + 1.0*0.1765 = 0.6730
+    # conf     = 0.2941 + 0.2353 + 0.1765 = 0.7059
+    assert abs(score - 0.6730) < 1e-2
+    assert abs(conf - 0.7059) < 1e-3
     assert mode == "available_signals_only"
     assert dims.roof_potential.value == 1.0
     assert dims.equity_proxy.value is None
@@ -181,17 +198,22 @@ async def test_cache_prevents_duplicate_calls() -> None:
 def test_score_does_NOT_renormalize_when_dims_null() -> None:
     """Headline score MUST visibly drop when dims are missing — no rescue-divide.
 
-    A property where we only know roof_potential=0.5 (weight 0.25) and nothing
-    else cannot exceed 0.125 on the headline. Confidence reports the gap.
+    Under the Phase-1.5e anchor (ROOF_KWH_FULL=30,000), a roof producing
+    15,000 kWh/yr scores 0.5. If every other dim is null, the headline must
+    stay at 0.5 * 0.25 = 0.125. Confidence reports the data gap (only 25%
+    of the weighted score is backed by real data).
     """
-    roof = SolarRoofData(max_array_panels=10, max_kwh_year=7_500, has_existing_solar=None)
+    roof = SolarRoofData(max_array_panels=10, max_kwh_year=15_000, has_existing_solar=None)
     cens = CensusData(median_household_income=None, block_group_geoid="x")
     pv = NRELData(ac_annual_kwh=None)
-    parcel = AssessorData(owner_occupied=None)
+    parcel = None
     score, dims, mode, conf = scoring.compute_score(roof, cens, pv, parcel)
-    # weighted_sum = 0.5 * 0.25 = 0.125 ; non-renormalized -> score = 0.125
-    assert abs(score - 0.125) < 1e-9
-    assert abs(conf - 0.25) < 1e-9
+    # Phase 1.5e effective weight for roof_potential = 0.25/0.85 = 0.2941.
+    # roof_potential value = 15000/30000 = 0.5.
+    # Only roof is available -> weighted = 0.5 * 0.2941 = 0.1471
+    # confidence = 0.2941 (just roof's effective weight)
+    assert abs(score - 0.1471) < 1e-3
+    assert abs(conf - 0.2941) < 1e-3
     assert mode == "available_signals_only"
     assert dims.income_qualification.value is None
     assert dims.ownership.value is None

@@ -24,9 +24,18 @@
           "5508017009",
           "7281018016"
         ]
+      },
+      {
+        "date": "2026-05-17",
+        "who": "Phase 1.5e build",
+        "method": "BQ query for top-CES Boyle Heights SFR + live pipeline smoke",
+        "result": "DAC-SASH routing verified for in-DAC residential parcel",
+        "verified_ains": [
+          "5191014012"
+        ]
       }
     ],
-    "status": "authoritative-for-phase-1.5c"
+    "status": "authoritative-for-phase-1.5e"
   },
   "records": [
     {
@@ -472,6 +481,26 @@
       "label": "Residential SFR (zip 90042)",
       "expected_category": "residential",
       "needs_manual_verification": false
+    },
+    {
+      "label": "Boyle Heights SFR (DAC, top-CES tract)",
+      "ain": "5191014012",
+      "property_location": "3545 OPAL ST  LOS ANGELES CA  90023",
+      "city": "LOS ANGELES CA",
+      "zip": "90023",
+      "use_category": "Residential",
+      "use_subcategory": "Single Family Residence",
+      "use_code": "0100",
+      "lat": "34.020957",
+      "lng": "-118.200467",
+      "home_owners_exemption": null,
+      "property_taxable": "Y",
+      "expected_category": "residential",
+      "expected_stream": "dac_sash",
+      "expected_is_dac": true,
+      "needs_manual_verification": false,
+      "verified_at_portal": "2026-05-17",
+      "notes": "Spot-checked Phase 1.5e: SFR + SB-535 DAC tract (CES percentile 99.97) -> dac_sash stream via DAC-SASH eligibility UNION rule (NOT override). Coords updated 2026-05-17 to parcel polygon centroid (was DAC tract centroid which resolved to neighbor 5191025014)."
     }
   ]
 }

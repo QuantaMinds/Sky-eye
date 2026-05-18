@@ -23,38 +23,17 @@ from api.models.lead import (
     SolarRoofData,
     UtilityInfo,
 )
+from api.services.region_calibration import get_calibration
 
-# Anchors used to normalize raw measurements into [0, 1].
-# ROOF_KWH_FULL was 15_000 through Phase 1.5d; raised to 30_000 on
-# 2026-05-17 after empirical probing of 15 LB residential SFRs against the
-# Solar API showed:
-#   min  8,739    p25  20,190    median  29,677    p75  59,116    max  445,473
-# Solar API's max_kwh_year measures the MAXIMUM array that fits on a roof
-# (often 20-50 panels at 400-500W), NOT a typical 4kW residential install
-# (~6,500 kWh/yr). The old 15k anchor produced saturating-1.0 roof scores
-# for almost every LA residential parcel; 30k = LB median produces real
-# 0.3-1.0 variance. See feedback-solar-api-max-kwh-semantics for full
-# context, including the calibration probe.
-ROOF_KWH_FULL = 30_000.0
-BILL_PAIN_FULL_USD = 3_000.0
-UTILITY_RATE_USD_PER_KWH = 0.30  # Phase 1.5c flat fallback; Phase 1.5d adds utility-aware
-# LA-calibrated continuous income curve (Phase 1.5e, refined 2026-05-17).
-# Peak at $130k = "prime paid-solar financing sweet spot" (max federal solar
-# credit utilization + clean loan underwriting). Original stepped bands (50/90/
-# 180/300) were rejected after forensic showed they produced only 2 unique
-# values across 93 sampled parcels (LA Census distribution is bimodal at
-# $50-90k and $90-180k; flat 1.0 across the whole $90-180k zone over-rewarded
-# half the county). The continuous curve produces ~80 unique values across
-# real LA income and pulls the population mean down ~0.10.
-INCOME_LOW_FLOOR = 50_000.0       # below: flat 0.20 (likely DAC-SASH candidate)
-INCOME_PEAK = 130_000.0           # peak 1.00 (prime financing zone)
-INCOME_DECAY_RANGE = 170_000.0    # above peak, decays linearly over $170k window
-INCOME_HIGH_FLOOR = 0.65          # asymptotic floor for $300k+ (saturation tier)
-# Equity formula constants — continuous asymptotic curve (see Prop 13 memory).
-EQUITY_DECAY = 0.95
-# Long-tenure threshold for the "owner without claimed exemption" cohort
-# (Belmont Shore-style: 50-year SFR with no Homeowner's Exemption claimed).
-LONG_TENURE_YEARS = 25
+# Region-specific calibration constants live in region_calibration.py.
+# Single source of truth — adding a new county (SF / Orange / etc.) is one
+# RegionCalibration entry there, not a hunt-and-replace here. See that
+# module's docstring for the empirical probes each constant requires.
+#
+# Today only LA County is calibrated; the module-level default is used.
+# When multi-region runtime is needed, plumb a `region` parameter through
+# scoring.compute_score and pass it to get_calibration() per-call.
+_CAL = get_calibration()
 
 
 def _clip(x: float) -> float:
@@ -68,8 +47,8 @@ def roof_potential_dim(roof: SolarRoofData) -> DimensionValue:
             note="No roof data returned for this building",
         )
     return DimensionValue(
-        value=_clip(roof.max_kwh_year / ROOF_KWH_FULL),
-        source=f"Google Solar API (anchor: {int(ROOF_KWH_FULL)} kWh/yr = 1.0)",
+        value=_clip(roof.max_kwh_year / _CAL.roof_kwh_full),
+        source=f"Google Solar API (anchor: {int(_CAL.roof_kwh_full)} kWh/yr = 1.0)",
     )
 
 
@@ -82,15 +61,15 @@ def _continuous_income_score(income: float) -> tuple[float, str]:
     real data, vs the prior 5-band stepped version that produced only 2
     unique values on the 93-parcel forensic sample).
     """
-    if income < INCOME_LOW_FLOOR:
+    if income < _CAL.income_low_floor:
         return 0.20, "<$50k low-income / DAC-SASH track"
-    if income <= INCOME_PEAK:
-        ratio = (income - INCOME_LOW_FLOOR) / (INCOME_PEAK - INCOME_LOW_FLOOR)
+    if income <= _CAL.income_peak:
+        ratio = (income - _CAL.income_low_floor) / (_CAL.income_peak - _CAL.income_low_floor)
         score = 0.20 + (ratio ** 1.5) * 0.80
         return round(score, 2), f"$50-130k rising toward financing peak"
-    distance = income - INCOME_PEAK
-    score = 1.00 - (distance / INCOME_DECAY_RANGE) * 0.35
-    score = max(INCOME_HIGH_FLOOR, score)
+    distance = income - _CAL.income_peak
+    score = 1.00 - (distance / _CAL.income_decay_range) * 0.35
+    score = max(_CAL.income_high_floor, score)
     return round(score, 2), f">$130k decaying toward saturation floor"
 
 
@@ -164,7 +143,7 @@ def ownership_dim_from_parcel(parcel: ParcelData) -> DimensionValue:
             value=0.95, source="LA County Assessor — Homeowner's Exemption claimed",
         )
     year, _ = _resolve_arms_length_year(parcel)
-    if year is not None and (datetime.now().year - year) >= LONG_TENURE_YEARS:
+    if year is not None and (datetime.now().year - year) >= _CAL.long_tenure_years:
         return DimensionValue(
             value=0.40, source="LA County Assessor — long tenure, no exemption",
             note=(
@@ -188,7 +167,7 @@ def equity_proxy_dim_from_parcel(parcel: ParcelData) -> DimensionValue:
             note="No base year, arms_length_year, or recording date in parcel record",
         )
     tenure = max(0, datetime.now().year - year)
-    value = round(1.0 - (EQUITY_DECAY ** tenure), 2)
+    value = round(1.0 - (_CAL.equity_decay ** tenure), 2)
     return DimensionValue(
         value=_clip(value),
         source=f"LA County Assessor — {source_tag}, tenure={tenure}yr",
@@ -214,7 +193,7 @@ def bill_pain_dim(nrel: NRELData, utility: UtilityInfo | None = None) -> Dimensi
         utility = UtilityInfo()  # all defaults; rate=0.30, confidence=fallback
     annual_bill = nrel.ac_annual_kwh * utility.representative_rate
     return DimensionValue(
-        value=_clip(annual_bill / BILL_PAIN_FULL_USD),
+        value=_clip(annual_bill / _CAL.bill_pain_full_usd),
         source=(
             f"NREL PVWatts v8 (4 kW system) x {utility.utility_name} "
             f"~${utility.representative_rate:.2f}/kWh"

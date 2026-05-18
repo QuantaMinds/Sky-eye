@@ -31,10 +31,12 @@ load_dotenv()
 
 from api.services import parcel_lookup  # noqa: E402
 from api.services._dimension_builders import (  # noqa: E402
-    LONG_TENURE_YEARS,
     equity_proxy_dim_from_parcel,
     ownership_dim_from_parcel,
 )
+from api.services.region_calibration import get_calibration  # noqa: E402
+
+LONG_TENURE_YEARS = get_calibration().long_tenure_years
 
 FIXTURE = Path(__file__).parent / "fixtures" / "labeled_addresses.json"
 TOLERANCE = 0.02  # allow ±0.02 on equity proxy comparison

@@ -1,0 +1,107 @@
+{
+  "bill_pain": {
+    "ladwp": {
+      "note": "confidence=precise; NEM regime: 1:1 retained. LADWP R-1A",
+      "source": "NREL PVWatts v8 (4 kW system) x LADWP ~$0.28/kWh (R-1A) = approximately $1,820/yr proxy",
+      "value": 0.6066666666666667
+    },
+    "no_utility": {
+      "note": "confidence=fallback; ",
+      "source": "NREL PVWatts v8 (4 kW system) x unknown ~$0.30/kWh = approximately $1,950/yr proxy",
+      "value": 0.65
+    },
+    "null_kwh": {
+      "note": "No production estimate returned",
+      "source": "NREL PVWatts v8",
+      "value": null
+    }
+  },
+  "equity_proxy": {
+    "exempt_1995": {
+      "note": "Continuous asymptotic curve: 1 - 0.95^tenure. Replaces stepped bands for smoother gradient. CA Prop 13 reality: real market equity is decoupled from assessed value; tenure is the cleanest free proxy.",
+      "source": "LA County Assessor \u2014 LEAST(land_base_year, improvement_base_year), tenure=31yr",
+      "value": 0.8
+    },
+    "noex_1975": {
+      "note": "Continuous asymptotic curve: 1 - 0.95^tenure. Replaces stepped bands for smoother gradient. CA Prop 13 reality: real market equity is decoupled from assessed value; tenure is the cleanest free proxy.",
+      "source": "LA County Assessor \u2014 LEAST(land_base_year, improvement_base_year), tenure=51yr",
+      "value": 0.93
+    },
+    "noex_2018": {
+      "note": "Continuous asymptotic curve: 1 - 0.95^tenure. Replaces stepped bands for smoother gradient. CA Prop 13 reality: real market equity is decoupled from assessed value; tenure is the cleanest free proxy.",
+      "source": "LA County Assessor \u2014 LEAST(land_base_year, improvement_base_year), tenure=8yr",
+      "value": 0.34
+    },
+    "noex_no_year": {
+      "note": "No base year, arms_length_year, or recording date in parcel record",
+      "source": "unavailable",
+      "value": null
+    }
+  },
+  "income": {
+    "high_350k": {
+      "note": "Block-group level \u2014 neighborhood proxy, not occupant income. Continuous curve peaks at $130k LA financing sweet-spot, decays toward $300k+ saturation tier. Replaces prior 5-band stepped version (Phase 1.5e forensic showed bimodal clustering).",
+      "source": "US Census ACS 2020-2024, block group 060371234003 (B19013_001E = $350,000; >$130k decaying toward saturation floor)",
+      "value": 0.65
+    },
+    "low_45k": {
+      "note": "Block-group level \u2014 neighborhood proxy, not occupant income. Continuous curve peaks at $130k LA financing sweet-spot, decays toward $300k+ saturation tier. Replaces prior 5-band stepped version (Phase 1.5e forensic showed bimodal clustering).",
+      "source": "US Census ACS 2020-2024, block group 060371234001 (B19013_001E = $45,000; <$50k low-income / DAC-SASH track)",
+      "value": 0.2
+    },
+    "null": {
+      "note": "No income data for block group 060371234004",
+      "source": "US Census ACS 2020-2024",
+      "value": null
+    },
+    "peak_130k": {
+      "note": "Block-group level \u2014 neighborhood proxy, not occupant income. Continuous curve peaks at $130k LA financing sweet-spot, decays toward $300k+ saturation tier. Replaces prior 5-band stepped version (Phase 1.5e forensic showed bimodal clustering).",
+      "source": "US Census ACS 2020-2024, block group 060371234002 (B19013_001E = $130,000; $50-130k rising toward financing peak)",
+      "value": 1.0
+    }
+  },
+  "ownership": {
+    "commercial": {
+      "note": "No Homeowner's Exemption + short tenure -> likely investor / rental.",
+      "source": "LA County Assessor \u2014 no exemption, short tenure",
+      "value": 0.15
+    },
+    "exempt_long": {
+      "note": null,
+      "source": "LA County Assessor \u2014 Homeowner's Exemption claimed",
+      "value": 0.95
+    },
+    "noex_long_tenure": {
+      "note": "Property held since 1975 (51+ yr) but no Homeowner's Exemption claimed. Likely inherited / family trust / unfiled owner-occupant. Disambiguate via mailing-address join (Phase 1.5c.2b).",
+      "source": "LA County Assessor \u2014 long tenure, no exemption",
+      "value": 0.4
+    },
+    "noex_no_year": {
+      "note": "No Homeowner's Exemption + short tenure -> likely investor / rental.",
+      "source": "LA County Assessor \u2014 no exemption, short tenure",
+      "value": 0.15
+    },
+    "noex_short": {
+      "note": "No Homeowner's Exemption + short tenure -> likely investor / rental.",
+      "source": "LA County Assessor \u2014 no exemption, short tenure",
+      "value": 0.15
+    }
+  },
+  "roof_potential": {
+    "25k_kWh": {
+      "note": null,
+      "source": "Google Solar API (anchor: 30000 kWh/yr = 1.0)",
+      "value": 0.8333333333333334
+    },
+    "60k_kWh": {
+      "note": null,
+      "source": "Google Solar API (anchor: 30000 kWh/yr = 1.0)",
+      "value": 1.0
+    },
+    "null": {
+      "note": "No roof data returned for this building",
+      "source": "Google Solar API",
+      "value": null
+    }
+  }
+}

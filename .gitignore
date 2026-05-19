@@ -79,3 +79,9 @@ htmlcov/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Pilot deliverable artifacts — generated CSVs with LA County address /
+# owner / mailing data. Outputs of scripts/12_*..14_* — regenerate locally.
+# Never committed: PII (owner names, mailing addresses after Tier-2 scrape)
+# must not enter git history.
+out/

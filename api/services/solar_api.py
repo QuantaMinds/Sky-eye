@@ -1,3 +1,4 @@
+
 """Google Solar API — buildingInsights:findClosest.
 
 Cached 30 days by lowercased address (per Solar API ToS).

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from api.config import get_settings
-from api.routers import health, lead_score
+from api.routers import batch, health, lead_score, narrative as narrative_router
 
 settings = get_settings()
 
@@ -13,6 +13,8 @@ app = FastAPI(
 
 app.include_router(health.router)
 app.include_router(lead_score.router)
+app.include_router(batch.router)
+app.include_router(narrative_router.router)
 
 
 @app.get("/")

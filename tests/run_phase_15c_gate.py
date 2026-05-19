@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from api.services import parcel_lookup  # noqa: E402
-from api.services._dimension_builders import (  # noqa: E402
+from api.services.dimensions import (  # noqa: E402
     equity_proxy_dim_from_parcel,
     ownership_dim_from_parcel,
 )

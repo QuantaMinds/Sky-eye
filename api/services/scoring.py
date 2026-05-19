@@ -21,7 +21,7 @@ from api.models.lead import (
     SolarRoofData,
     UtilityInfo,
 )
-from api.services._dimension_builders import (
+from api.services.dimensions import (
     bill_pain_dim,
     equity_proxy_dim_from_parcel,
     income_dim,

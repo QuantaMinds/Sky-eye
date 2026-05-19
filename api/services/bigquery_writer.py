@@ -35,24 +35,50 @@ def _now_iso() -> str:
 def _create_job_sync(
     job_id: str, installer_id: str | None, address_count: int, request_input: str
 ) -> None:
+    """Insert the job header row via DML INSERT, NOT streaming insert.
+
+    Why: BigQuery refuses DML UPDATE/DELETE against rows still in the
+    streaming buffer (~30 min residency). Earlier versions used
+    `insert_rows_json`, which sent the row through the streaming buffer
+    and made the subsequent UPDATE in process_batch silently fail (caught
+    by the swallowing `except` and ignored). Pre-fix, all 5 batch_jobs
+    rows ever written read `status='queued', counts=0` regardless of
+    actual job state — cross-worker / direct-BQ readers saw wrong data.
+
+    DML INSERT goes through the query path: no streaming buffer, row is
+    immediately UPDATE-able. Cost is identical at this volume (~hundreds
+    of jobs/day; one tiny INSERT each).
+    """
     now = dt.datetime.now(tz=dt.timezone.utc)
     expires = now + dt.timedelta(days=90)
-    row = {
-        "job_id": job_id,
-        "installer_id": installer_id,
-        "request_type": "address_list",
-        "request_input": request_input[:500],
-        "address_count": address_count,
-        "status": "queued",
-        "completed_count": 0,
-        "skipped_count": 0,
-        "failed_count": 0,
-        "created_at": now.isoformat(),
-        "expires_at": expires.isoformat(),
-    }
-    errors = _client().insert_rows_json(_JOBS_TABLE, [row])
-    if errors:
-        raise RuntimeError(f"insert batch_jobs failed: {errors}")
+    sql = f"""
+    INSERT INTO `{_JOBS_TABLE}` (
+        job_id, installer_id, request_type, request_input, address_count,
+        status, completed_count, skipped_count, failed_count,
+        created_at, expires_at
+    ) VALUES (
+        @job_id, @installer_id, @request_type, @request_input, @address_count,
+        @status, @completed_count, @skipped_count, @failed_count,
+        @created_at, @expires_at
+    )
+    """
+    params = [
+        bigquery.ScalarQueryParameter("job_id", "STRING", job_id),
+        bigquery.ScalarQueryParameter("installer_id", "STRING", installer_id),
+        bigquery.ScalarQueryParameter("request_type", "STRING", "address_list"),
+        bigquery.ScalarQueryParameter("request_input", "STRING", request_input[:500]),
+        bigquery.ScalarQueryParameter("address_count", "INT64", address_count),
+        bigquery.ScalarQueryParameter("status", "STRING", "queued"),
+        bigquery.ScalarQueryParameter("completed_count", "INT64", 0),
+        bigquery.ScalarQueryParameter("skipped_count", "INT64", 0),
+        bigquery.ScalarQueryParameter("failed_count", "INT64", 0),
+        bigquery.ScalarQueryParameter("created_at", "TIMESTAMP", now),
+        bigquery.ScalarQueryParameter("expires_at", "TIMESTAMP", expires),
+    ]
+    _client().query(
+        sql,
+        job_config=bigquery.QueryJobConfig(query_parameters=params),
+    ).result()
 
 
 def _update_job_sync(job_id: str, **fields: Any) -> None:

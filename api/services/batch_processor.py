@@ -17,11 +17,14 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import logging
 from typing import Any
 
 from api.services import _batch_counters, _batch_scorer, bigquery_writer
 
 SOLAR_CONCURRENCY = 10
+
+logger = logging.getLogger(__name__)
 
 # In-memory job state — survives the lifetime of one uvicorn worker.
 # Authoritative store is BigQuery; this is a low-latency mirror so the
@@ -109,6 +112,10 @@ async def process_batch(
             job_id, installer_id, len(addresses), addresses[0] if addresses else ""
         )
     except Exception as exc:  # pragma: no cover — BQ outage is non-fatal here
+        # Log + stash on the job so a future operator/test can see the
+        # failure. Silent swallowing is what previously hid the streaming-
+        # buffer UPDATE bug for ~5 batches before anyone noticed.
+        logger.warning("batch_jobs create_job failed for %s: %s", job_id, exc)
         _JOBS[job_id].setdefault("bq_errors", []).append(str(exc)[:300])
 
     sem = asyncio.Semaphore(SOLAR_CONCURRENCY)
@@ -135,4 +142,5 @@ async def process_batch(
             completed_at=finished,
         )
     except Exception as exc:  # pragma: no cover
+        logger.warning("batch_jobs update_job failed for %s: %s", job_id, exc)
         _JOBS[job_id].setdefault("bq_errors", []).append(str(exc)[:300])

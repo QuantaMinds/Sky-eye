@@ -503,6 +503,53 @@ def test_unknown_status_does_not_inflate_completed(
     assert body["failure_reasons"] == {"rate_limited_pending_retry": 1}
 
 
+def test_create_job_uses_dml_insert_not_streaming(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lock the streaming-buffer fix: _create_job_sync MUST go through
+    client.query() (DML INSERT), NOT insert_rows_json (streaming insert).
+
+    Why this test matters: pre-fix, all 5 batch_jobs rows ever written
+    read 'status=queued, counts=0' because streaming-buffered rows can't
+    be UPDATEd, and the update exception was swallowed. If anyone reverts
+    to insert_rows_json for this path, this test fails immediately.
+    """
+    from api.services import bigquery_writer as bw
+
+    calls: dict[str, list[object]] = {"query": [], "insert_rows_json": []}
+
+    class _FakeJob:
+        def result(self):
+            return None
+
+    class _FakeClient:
+        def query(self, sql: str, **kwargs):
+            calls["query"].append({"sql": sql, "kwargs": kwargs})
+            return _FakeJob()
+
+        def insert_rows_json(self, table: str, rows: list[dict]):
+            calls["insert_rows_json"].append({"table": table, "rows": rows})
+            return []  # signal "no errors" if anyone calls this
+
+    monkeypatch.setattr(bw, "_client", lambda: _FakeClient())
+
+    bw._create_job_sync(
+        job_id="job-dml-test",
+        installer_id="t",
+        address_count=3,
+        request_input="1 A St; 2 B St; 3 C St",
+    )
+
+    assert len(calls["insert_rows_json"]) == 0, (
+        "regression: _create_job_sync fell back to streaming insert — "
+        "rows in the buffer can't be UPDATEd and job counts go silently stale"
+    )
+    assert len(calls["query"]) == 1
+    sql = calls["query"][0]["sql"]
+    assert "INSERT INTO" in sql.upper()
+    assert "batch_jobs" in sql
+
+
 def test_cache_hits_skip_api_calls() -> None:
     """Hit the real geocoding service via the SQLite cache. Seeded entries
     must return without invoking the HTTP transport at all."""

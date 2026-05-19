@@ -33,7 +33,7 @@ describe("<BatchUploadForm>", () => {
   it("disables the whole form when disabled prop is true", () => {
     render(<BatchUploadForm onSubmit={vi.fn()} disabled />)
     expect(screen.getByLabelText(/paste addresses/i)).toBeDisabled()
-    expect(screen.getByLabelText(/csv file/i)).toBeDisabled()
+    expect(screen.getByLabelText(/file upload/i)).toBeDisabled()
     expect(screen.getByRole("button", { name: /score batch/i })).toBeDisabled()
   })
 })

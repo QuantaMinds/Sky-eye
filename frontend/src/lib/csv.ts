@@ -1,13 +1,19 @@
 /**
- * Parse pasted text or an uploaded CSV file into a deduped list of
- * addresses. The /batch-score endpoint accepts a flat string[] (the row
- * structure of the CSV is ignored) so the rule is: each line is one
- * address, ignore blank lines, trim each, deduplicate (case-insensitive)
- * preserving first-occurrence order.
+ * Parse pasted text or an uploaded plain-text address list into a deduped
+ * list of addresses. One full address per line, commas INSIDE the address
+ * are preserved (`"123 Main St, Long Beach, CA 90802"` stays intact).
  *
- * Single-column CSVs work as-is. Multi-column CSVs use the first column
- * only — Phase 4 dashboard does not support column mapping yet (the
- * common batch case for Tony's pilot is one address per line).
+ * Why the whole line, not the first comma-separated cell: real US
+ * addresses contain commas as part of their canonical form, and the
+ * common case for this dashboard is a paste of fully-qualified addresses.
+ * Splitting at the first comma silently stripped city/state/ZIP and the
+ * backend then geocoded the wrong location (see Phase 4 v1 bug found
+ * 2026-05-19 on "2021 N Beverly Plaza, Long Beach, CA 90815").
+ *
+ * Multi-column CSV with the address in column 1 is NOT supported in v1.
+ * If we add it later: detect quoting (`"123 Main St, LB, CA",extra`) and
+ * route those through a proper CSV parser. Until then, single-address-
+ * per-line is the contract.
  */
 
 export interface CsvParseResult {
@@ -25,8 +31,9 @@ export function parseCsvAddresses(input: string): CsvParseResult {
   let duplicateCount = 0
 
   for (const rawLine of input.split(/\r?\n/)) {
-    const firstCell = rawLine.split(",")[0] ?? ""
-    const trimmed = firstCell.trim().replace(/^"|"$/g, "").trim()
+    // Whole line is the address; strip outer quotes if present (some
+    // exports wrap each row in "...").
+    const trimmed = rawLine.trim().replace(/^"(.*)"$/, "$1").trim()
     if (!trimmed) {
       blankLineCount += 1
       continue

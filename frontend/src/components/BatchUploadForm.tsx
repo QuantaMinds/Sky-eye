@@ -41,7 +41,7 @@ export function BatchUploadForm({ onSubmit, disabled = false }: Props) {
     <form onSubmit={handleSubmit} className="space-y-4" aria-label="Batch upload form">
       <div className="space-y-1">
         <label className="block text-sm font-medium" htmlFor="batch-file">
-          CSV file (one address per row, first column used)
+          File upload (one full address per line)
         </label>
         <input
           id="batch-file"

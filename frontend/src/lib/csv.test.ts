@@ -15,14 +15,26 @@ describe("parseCsvAddresses", () => {
     expect(r.duplicateCount).toBe(2)
   })
 
-  it("uses first CSV column when row has multiple commas", () => {
-    const r = parseCsvAddresses("1 Main St,90210,extra\n2 Oak Ave,foo")
-    expect(r.addresses).toEqual(["1 Main St", "2 Oak Ave"])
+  it("preserves the full line including embedded commas (real addresses)", () => {
+    // Regression: v1 split at the first comma and silently stripped
+    // city/state/ZIP, causing the backend to geocode the wrong location.
+    const r = parseCsvAddresses(
+      "2021 N Beverly Plaza, Long Beach, CA 90815\n100 Long Beach Blvd, Long Beach, CA 90802"
+    )
+    expect(r.addresses).toEqual([
+      "2021 N Beverly Plaza, Long Beach, CA 90815",
+      "100 Long Beach Blvd, Long Beach, CA 90802",
+    ])
   })
 
-  it("strips wrapping quotes from CSV cells", () => {
-    const r = parseCsvAddresses('"1 Main St"\n"2 Oak Ave"')
-    expect(r.addresses).toEqual(["1 Main St", "2 Oak Ave"])
+  it("strips outer wrapping quotes (some CSV exports wrap each row)", () => {
+    const r = parseCsvAddresses(
+      '"1 Main St, Long Beach, CA"\n"2 Oak Ave, Long Beach, CA"'
+    )
+    expect(r.addresses).toEqual([
+      "1 Main St, Long Beach, CA",
+      "2 Oak Ave, Long Beach, CA",
+    ])
   })
 
   it("caps at 500 addresses (mirrors backend MAX_BATCH)", () => {

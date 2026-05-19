@@ -6,14 +6,13 @@ import { MapAndVerify } from "@/components/MapAndVerify"
 import { NarrativeSection } from "@/components/NarrativeSection"
 import { PageFooter } from "@/components/PageFooter"
 import { StatsStrip } from "@/components/StatsStrip"
-import { lookupDemoByApn } from "@/lib/demo-data"
 import { loadScore } from "@/lib/session-store"
 import { ScoreNotFound } from "@/pages/ScoreNotFound"
 import type { ScoreResponse } from "@/types/score"
 
 function resolveResult(apn: string | undefined): ScoreResponse | null {
   if (!apn) return null
-  return loadScore(apn) ?? lookupDemoByApn(apn)
+  return loadScore(apn) || null
 }
 
 export function ScoreResult() {

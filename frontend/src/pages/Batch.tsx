@@ -3,6 +3,7 @@ import { BatchResultsTable } from "@/components/BatchResultsTable"
 import { BatchStatusCounters } from "@/components/BatchStatusCounters"
 import { BatchUploadForm } from "@/components/BatchUploadForm"
 import { useBatchJob } from "@/hooks/useBatchJob"
+import { getBatchExportUrl } from "@/lib/api-batch"
 
 export function Batch() {
   const job = useBatchJob()
@@ -10,6 +11,8 @@ export function Batch() {
   const submitting = job.stage === "submitting" || job.stage === "polling"
   const showStatus = job.status !== null
   const showResults = job.stage === "complete" && job.status !== null
+  const scoredCount = job.status?.completed_count ?? 0
+  const canDownload = showResults && scoredCount > 0 && job.jobId !== null
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -53,9 +56,21 @@ export function Batch() {
 
       {showResults && job.status && (
         <section className="mx-auto max-w-4xl px-4 pb-16">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Priority ranking
-          </h2>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Priority ranking
+            </h2>
+            {canDownload && job.jobId && (
+              <a
+                href={getBatchExportUrl(job.jobId)}
+                download
+                data-testid="batch-download-csv"
+                className="inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
+              >
+                Download scored CSV ({scoredCount})
+              </a>
+            )}
+          </div>
           <BatchResultsTable results={job.status.results} />
         </section>
       )}

@@ -149,4 +149,9 @@ async def score_one_address(job_id: str, index: int, address: str) -> dict[str, 
         out["total_value"] = parcel.total_value
         out["sqft_main"] = parcel.sqft_main
         out["year_built"] = parcel.year_built
+    # utility.lookup_by_point always returns a UtilityInfo (falls back to
+    # 'unknown' when no territory matches). 'unknown' surfaces honestly in
+    # the CSV — installer can see we didn't resolve the utility for that
+    # address rather than guessing LADWP/SCE from the city name.
+    out["bill_pain_utility"] = util.utility_name
     return out

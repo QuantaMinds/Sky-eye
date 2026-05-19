@@ -680,3 +680,127 @@ def test_cache_hits_skip_api_calls() -> None:
         httpx.AsyncClient = original  # type: ignore[assignment]
     assert was_cached is True
     assert result.lat == 33.77
+
+
+# --- CSV export ---------------------------------------------------------
+#
+# These tests cover GET /api/v1/batch-score/{job_id}/export?format=csv.
+# Truth-first (Rule 3): None cells must render blank, NOT 0. Skipped /
+# failed rows must NOT appear in the CSV — only scored rows with a
+# non-null priority_score. Sort order is priority_score desc.
+
+def _scored_row(
+    job_id: str, idx: int, address: str, score: float, **overrides: Any
+) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "job_id": job_id,
+        "result_index": idx,
+        "input_address": address,
+        "scored_status": "scored",
+        "priority_score": score,
+        "resolved_ain": f"7100-001-{idx:03d}",
+        "geocoded_lat": 33.77,
+        "geocoded_lng": -118.19,
+        "stream": "owner_occupied",
+        "roof_potential": 0.8,
+        "income_qualified": 0.6,
+        "ownership": 0.9,
+        "bill_pain": 0.7,
+        "equity_strength": 0.5,
+        "bill_pain_utility": "LADWP",
+        "year_built": 1965,
+        "sqft_main": 1400,
+        "has_homeowners_exemption": True,
+        "gemini_narrative": None,  # batch never fills this — lazy
+    }
+    row.update(overrides)
+    return row
+
+
+def test_batch_export_returns_csv_with_all_columns(
+    monkeypatch: pytest.MonkeyPatch, stub_bq: dict[str, list[Any]]
+) -> None:
+    """Three scored rows + one failure. CSV contains only the scored rows,
+    sorted by score desc, with the full spec'd column set."""
+    async def fake_score(job_id, idx, addr):
+        if idx == 1:
+            return {
+                "job_id": job_id, "result_index": idx, "input_address": addr,
+                "scored_status": "api_failure", "error_message": "boom",
+            }
+        # 0 -> 0.4, 2 -> 0.9 to verify sort order
+        return _scored_row(job_id, idx, addr, score=0.9 if idx == 2 else 0.4)
+    monkeypatch.setattr(_batch_scorer, "score_one_address", fake_score)
+
+    with TestClient(app) as client:
+        sub = client.post(
+            "/api/v1/batch-score",
+            json={"addresses": ["1 Low St", "2 Bad St", "3 High St"]},
+        )
+        job_id = sub.json()["job_id"]
+        r = client.get(f"/api/v1/batch-score/{job_id}/export?format=csv")
+
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("text/csv")
+    assert "attachment" in r.headers["content-disposition"]
+    assert job_id[:8] in r.headers["content-disposition"]
+
+    lines = r.text.strip().split("\n")
+    assert lines[0] == (
+        "address,apn,lat,lng,score,stream,roof_potential,income_qualification,"
+        "ownership,bill_pain,equity_proxy,utility,year_built,sqft,"
+        "owner_occupied_signal,narrative"
+    )
+    # Only 2 data rows (the failure was excluded).
+    assert len(lines) == 3
+    # Sort desc: "3 High St" (score=0.9) is row 1, "1 Low St" (0.4) is row 2.
+    assert lines[1].startswith("3 High St,")
+    assert lines[2].startswith("1 Low St,")
+
+
+def test_batch_export_none_cells_are_blank_not_zero(
+    monkeypatch: pytest.MonkeyPatch, stub_bq: dict[str, list[Any]]
+) -> None:
+    """Truth-first: a scored row missing roof_potential / narrative must
+    render those cells as empty, never as '0' or '0.0'."""
+    async def fake_score(job_id, idx, addr):
+        return _scored_row(
+            job_id, idx, addr, score=0.5,
+            roof_potential=None,
+            gemini_narrative=None,
+            year_built=None,
+        )
+    monkeypatch.setattr(_batch_scorer, "score_one_address", fake_score)
+
+    with TestClient(app) as client:
+        sub = client.post("/api/v1/batch-score", json={"addresses": ["1 Null St"]})
+        job_id = sub.json()["job_id"]
+        r = client.get(f"/api/v1/batch-score/{job_id}/export?format=csv")
+
+    assert r.status_code == 200
+    data_row = r.text.strip().split("\n")[1]
+    cols = data_row.split(",")
+    # CSV column index: roof_potential=6, year_built=12, narrative=15.
+    assert cols[6] == "", f"roof_potential cell was {cols[6]!r}, expected blank"
+    assert cols[12] == "", f"year_built cell was {cols[12]!r}, expected blank"
+    assert cols[15] == "", f"narrative cell was {cols[15]!r}, expected blank"
+
+
+def test_batch_export_404_for_unknown_job() -> None:
+    with TestClient(app) as client:
+        r = client.get("/api/v1/batch-score/does-not-exist/export?format=csv")
+    assert r.status_code == 404
+
+
+def test_batch_export_400_for_unsupported_format(
+    monkeypatch: pytest.MonkeyPatch, stub_bq: dict[str, list[Any]]
+) -> None:
+    async def fake_score(job_id, idx, addr):
+        return _scored_row(job_id, idx, addr, score=0.5)
+    monkeypatch.setattr(_batch_scorer, "score_one_address", fake_score)
+
+    with TestClient(app) as client:
+        sub = client.post("/api/v1/batch-score", json={"addresses": ["1 Fmt St"]})
+        job_id = sub.json()["job_id"]
+        r = client.get(f"/api/v1/batch-score/{job_id}/export?format=xlsx")
+    assert r.status_code == 400

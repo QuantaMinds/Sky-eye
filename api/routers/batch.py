@@ -15,9 +15,10 @@ import asyncio
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi.responses import Response
 
 from api.models.batch import BatchAcceptResponse, BatchRequest, BatchStatusResponse
-from api.services import batch_processor
+from api.services import _batch_csv, batch_processor
 
 router = APIRouter(prefix="/api/v1", tags=["batch-score"])
 
@@ -68,4 +69,29 @@ async def get_batch_status(job_id: str) -> BatchStatusResponse:
         skip_reasons=snap.get("skip_reasons") or None,
         failure_reasons=snap.get("failure_reasons") or None,
         results=snap.get("results", []),
+    )
+
+
+@router.get("/batch-score/{job_id}/export")
+async def export_batch_csv(job_id: str, format: str = "csv") -> Response:
+    """Download scored rows as a sorted CSV. Only 'csv' is supported today.
+
+    Reads from the same job snapshot as the status endpoint so the CSV
+    matches what the UI is showing exactly — no second pipeline, no risk
+    of the export disagreeing with the dashboard.
+    """
+    if format != "csv":
+        raise HTTPException(status_code=400, detail=f"unsupported format: {format}")
+    snap = await batch_processor.get_job(job_id)
+    if snap is None:
+        raise HTTPException(status_code=404, detail=f"job {job_id} not known")
+    body = _batch_csv.build_csv(snap.get("results", []))
+    return Response(
+        content=body,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="leadlens-batch-{job_id[:8]}.csv"'
+            ),
+        },
     )

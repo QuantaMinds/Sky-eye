@@ -23,6 +23,13 @@ import math
 from dataclasses import dataclass
 from typing import Optional
 
+# UNVALIDATED THRESHOLDS — starting points, NOT tuned parameters.
+# All three numbers below were chosen by intuition; none have been
+# calibrated against labeled ground truth. They MUST be re-tuned once
+# the >=100-case labeled set exists (per feedback_precision_claim_validation_minimum
+# + feedback_artifact_shipped_vs_claim_validated). Do NOT cite any
+# precision number computed with these defaults in customer-facing
+# material until calibration has run.
 ALPHAEARTH_DISTANCE_THRESHOLD = 0.4
 GEMINI_CONFIDENCE_THRESHOLD = 0.7
 # $250/sqft is the rough LB residential improvement value blend; 100 sqft -> $25K uplift

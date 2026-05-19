@@ -503,6 +503,80 @@ def test_unknown_status_does_not_inflate_completed(
     assert body["failure_reasons"] == {"rate_limited_pending_retry": 1}
 
 
+def test_batch_skips_single_ain_apartment_building(
+    monkeypatch: pytest.MonkeyPatch, stub_bq: dict[str, list[Any]]
+) -> None:
+    """Phase 2.0.1: a single AIN representing a multi-unit building
+    (apartment / multiplex) must skip with scored_status=multi_unit_skipped
+    even when resolution_confidence=='parcel' (no polygon collision).
+
+    Distinct from the condo-sibling case in test_batch_skips_multi_unit_
+    collision: there ains_at_point>1, here ains_at_point==1 but units>1.
+    The error_message names the actual cause for debugging.
+    """
+    from api.models.lead import (
+        CensusData, DacInfo, GeocodingResult, NRELData, ParcelData,
+        SolarRoofData, UtilityInfo,
+    )
+    from api.services import (
+        census, dac, geocoding, nrel, parcel_lookup, solar_api, utility,
+    )
+
+    async def fake_geo(addr):
+        return GeocodingResult(lat=33.77, lng=-118.19, formatted_address=addr), False
+    async def fake_solar(lat, lng, a):
+        return SolarRoofData(max_array_panels=10, max_kwh_year=12000), False
+    async def fake_census(lat, lng):
+        return CensusData(median_household_income=85000, block_group_geoid="060371234001"), False
+    async def fake_nrel(lat, lng, **kw):
+        return NRELData(ac_annual_kwh=8000), False
+    async def fake_util(lat, lng):
+        return UtilityInfo(), False
+    async def fake_dac(lat, lng):
+        return DacInfo(), False
+
+    async def fake_parcel_apartment(lat, lng):
+        return ParcelData(
+            apn="7150010001", address_situs="450 W BROADWAY",
+            city="LONG BEACH CA", zip="90802",
+            use_category="Residential", use_subcategory="Five or more units or apartments",
+            is_residential=True, is_taxable=True, stream="private",
+            units=20,                                # ← the multi-unit signal
+            resolution_confidence="parcel",          # ← NOT a polygon collision
+            ains_at_point=1,                         # ← single AIN
+        ), False
+
+    monkeypatch.setattr(geocoding, "geocode", fake_geo)
+    monkeypatch.setattr(solar_api, "get_roof_data", fake_solar)
+    monkeypatch.setattr(census, "get_block_group_data", fake_census)
+    monkeypatch.setattr(nrel, "get_production", fake_nrel)
+    monkeypatch.setattr(parcel_lookup, "lookup_by_point", fake_parcel_apartment)
+    monkeypatch.setattr(utility, "lookup_by_point", fake_util)
+    monkeypatch.setattr(dac, "lookup_by_point", fake_dac)
+
+    with TestClient(app) as client:
+        sub = client.post(
+            "/api/v1/batch-score",
+            json={"addresses": ["450 W BROADWAY, Long Beach, CA 90802"]},
+        )
+        job_id = sub.json()["job_id"]
+        body = client.get(f"/api/v1/batch-score/{job_id}").json()
+
+    rows = body["results"]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["scored_status"] == "multi_unit_skipped"
+    assert row.get("priority_score") is None
+    # error_message names the single-AIN-apartment cause, NOT the polygon case.
+    msg = row["error_message"]
+    assert "20 units" in msg
+    assert "apartment" in msg.lower() or "multiplex" in msg.lower()
+    # Job-level: counted as skipped, not failed.
+    assert body["skipped_count"] == 1
+    assert body["failed_count"] == 0
+    assert body["skip_reasons"] == {"multi_unit_skipped": 1}
+
+
 def test_create_job_uses_dml_insert_not_streaming(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

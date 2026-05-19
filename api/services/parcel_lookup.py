@@ -34,6 +34,13 @@ WITH matches AS (
     arms_length_year, recording_year,
     year_built, sqft_main, total_value, land_value, improvement_value,
     area_m2,
+    -- LA County `number_of_units` (per script 08, with sentinel-zero
+    -- mapped to NULL). >1 means this single AIN represents a multi-unit
+    -- building (apartment / multiplex / triplex etc.) — not the same as
+    -- ains_at_point>1 (which means sibling-condo polygon sharing).
+    -- Both signals need to fire the multi-unit skip; this one catches
+    -- single-AIN apartment buildings the polygon-sharing check misses.
+    units,
     -- # of AINs whose polygon contains this point. >1 means we're inside
     -- a multi-unit building (condo / apartment) and the returned AIN is
     -- one of the sibling units, not necessarily the queried one.
@@ -127,6 +134,7 @@ async def lookup_by_point(lat: float, lng: float) -> tuple[ParcelData | None, bo
         land_value=_to_float(row.get("land_value")),
         improvement_value=_to_float(row.get("improvement_value")),
         area_m2=row.get("area_m2"),
+        units=row.get("units"),
         resolution_confidence=resolution,
         ains_at_point=ains_at_point,
     )

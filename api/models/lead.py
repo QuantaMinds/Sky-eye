@@ -76,6 +76,12 @@ class ParcelData(BaseModel):
     land_value: float | None = None
     improvement_value: float | None = None
     area_m2: float | None = None
+    # LA County number_of_units. NULL means unknown (truth-first — don't
+    # penalize on absent signal); >1 fires the multi_unit_skipped path in
+    # _batch_scorer alongside the polygon-sharing resolution_confidence
+    # check. Two distinct multi-unit signals: this one catches single-AIN
+    # apartment buildings; resolution_confidence catches condo siblings.
+    units: int | None = None
     # "parcel" -> ST_CONTAINS resolved to exactly one AIN at this point.
     # "building" -> point falls inside a polygon shared by multiple AINs
     #   (condos, apartment-owned units, etc.). Returned AIN is one of the

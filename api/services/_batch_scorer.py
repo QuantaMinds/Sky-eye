@@ -76,27 +76,47 @@ async def score_one_address(job_id: str, index: int, address: str) -> dict[str, 
         )
     )
 
-    # Multi-unit building: the spatial lookup returned a polygon shared by
-    # multiple AINs (condo siblings). Per C-46 residential-rooftop scope,
-    # individual units have no unit-level roof ownership signal, so the
-    # priority_score would be the same for every sibling and stack the
-    # top decile. Surface the row honestly instead of ranking it. The
-    # Phase 2.0.1 follow-up will also catch units > 1 on a single AIN
-    # (single-AIN apartment buildings) once `units` lands in the projection.
-    if parcel is not None and parcel.resolution_confidence == "building":
-        return {
-            **base,
-            "scored_status": "multi_unit_skipped",
-            "resolved_ain": parcel.apn,
-            "resolution_confidence": parcel.resolution_confidence,
-            "stream": parcel.stream,
-            "error_message": (
-                f"Multi-unit building detected ({parcel.ains_at_point} AINs share "
-                f"this polygon). Per C-46 residential-rooftop scope, individual "
-                f"units cannot be scored without unit-level roof ownership data. "
-                f"Excluded from ranking."
-            ),
-        }
+    # Multi-unit building skip. Two distinct signals, either fires:
+    #
+    #   (a) resolution_confidence == "building" — the spatial lookup returned
+    #       a polygon shared by multiple AINs (condo siblings). The returned
+    #       AIN is one of the siblings, not necessarily the queried unit.
+    #
+    #   (b) units > 1 — a single AIN represents a multi-unit building
+    #       (apartment / multiplex / triplex). The condo-sibling check misses
+    #       this case because ains_at_point == 1.
+    #
+    # Both surface the same scored_status so Tony's dashboard reads them as
+    # one cohort ("Multi-unit buildings excluded"); the error_message
+    # distinguishes the cause for debugging. Per C-46 residential-rooftop
+    # scope, individual units have no roof-ownership signal — excluded from
+    # ranking. NULL units doesn't fire the skip (truth-first: don't penalize
+    # on absent signal). See [[feedback-no-score-renormalization]].
+    if parcel is not None:
+        polygon_collision = parcel.resolution_confidence == "building"
+        bldg_units = parcel.units if parcel.units is not None else 1
+        single_ain_multi_unit = bldg_units > 1
+        if polygon_collision or single_ain_multi_unit:
+            if polygon_collision:
+                cause = (
+                    f"{parcel.ains_at_point} AINs share this polygon "
+                    f"(condo siblings)"
+                )
+            else:
+                cause = f"{bldg_units} units on a single AIN (apartment / multiplex)"
+            return {
+                **base,
+                "scored_status": "multi_unit_skipped",
+                "resolved_ain": parcel.apn,
+                "resolution_confidence": parcel.resolution_confidence,
+                "stream": parcel.stream,
+                "error_message": (
+                    f"Multi-unit building detected ({cause}). Per C-46 "
+                    f"residential-rooftop scope, individual units cannot be "
+                    f"scored without unit-level roof ownership data. "
+                    f"Excluded from ranking."
+                ),
+            }
 
     score, dims, _, _ = scoring.compute_score(roof, cens, pv, parcel, util, dac_info)
 

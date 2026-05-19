@@ -10,18 +10,19 @@ from __future__ import annotations
 
 import httpx
 
-from api import cache
 from api.config import get_settings
+from api.middleware import rate_limiter, ttl_cache
 from api.models.lead import CensusData
 
 _ACS_VINTAGE = "2024"
 _ACS_URL = f"https://api.census.gov/data/{_ACS_VINTAGE}/acs/acs5"
 _GEO_URL = "https://geocoding.geo.census.gov/geocoder/geographies/coordinates"
 _INCOME_VAR = "B19013_001E"
+_SERVICE = "census"
 
 
 def _cache_key(lat: float, lng: float) -> str:
-    return f"census:{lat:.5f},{lng:.5f}"
+    return f"{lat:.5f},{lng:.5f}"
 
 
 def _parse_income(raw: str | int | float | None) -> float | None:
@@ -35,12 +36,12 @@ def _parse_income(raw: str | int | float | None) -> float | None:
 
 async def get_block_group_data(lat: float, lng: float) -> tuple[CensusData, bool]:
     key = _cache_key(lat, lng)
-    hit = cache.get(key)
-    if hit is not None:
-        return CensusData(**hit), True
+    cached = await ttl_cache.get(_SERVICE, key)
+    if cached is not None:
+        return CensusData(**cached), True
 
     settings = get_settings()
-    async with httpx.AsyncClient(timeout=20.0) as client:
+    async with await rate_limiter.acquire(_SERVICE), httpx.AsyncClient(timeout=20.0) as client:
         geo = await client.get(
             _GEO_URL,
             params={
@@ -90,5 +91,5 @@ async def get_block_group_data(lat: float, lng: float) -> tuple[CensusData, bool
         median_household_income=_parse_income(rows[1][0]),
         block_group_geoid=f"{state}{county}{tract}{bg_id}",
     )
-    cache.set(key, result.model_dump())
+    await ttl_cache.set(_SERVICE, key, result.model_dump())
     return result, False

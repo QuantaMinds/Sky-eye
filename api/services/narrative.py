@@ -8,22 +8,30 @@ forward-compatible path and supports the same Vertex backend via
 
 Auth: Application Default Credentials. All charges land on
 GOOGLE_CLOUD_PROJECT. No Google AI Studio API key in use anywhere.
-Responses cached 30 days by prompt hash (Vertex IS an external API call).
+Phase 4: cached forever via ttl_cache (we own the artifact per Vertex
+ToS); rate-limited at 60/min via the "gemini" service; input/output
+token usage recorded from response.usage_metadata for /health.
 """
 from __future__ import annotations
 
 import asyncio
 import hashlib
 
-from api import cache
 from api.config import get_settings
+from api.middleware import rate_limiter, ttl_cache
 from api.models.lead import ScoreDimensions
 
 _MODEL_NAME = "gemini-2.5-flash"
+_SERVICE = "gemini"
 
 
-def _call_gemini(prompt: str) -> str:
-    """Invoke Gemini 2.5 Flash via Vertex. Isolated for monkeypatching."""
+def _call_gemini(prompt: str) -> tuple[str, int, int]:
+    """Invoke Gemini 2.5 Flash via Vertex. Isolated for monkeypatching.
+
+    Returns (text, input_tokens, output_tokens). Token counts come from
+    the response usage_metadata; we surface them so the rate_limiter
+    token counter can record actual usage rather than a guess.
+    """
     from google import genai
     from google.genai import types
 
@@ -48,7 +56,10 @@ def _call_gemini(prompt: str) -> str:
             thinking_config=types.ThinkingConfig(thinking_budget=0),
         ),
     )
-    return response.text or ""
+    usage = getattr(response, "usage_metadata", None)
+    in_tok = getattr(usage, "prompt_token_count", 0) or 0
+    out_tok = getattr(usage, "candidates_token_count", 0) or 0
+    return response.text or "", int(in_tok), int(out_tok)
 
 
 _DIM_NAMES = (
@@ -109,7 +120,7 @@ def _build_prompt(
 
 
 def _cache_key(prompt: str) -> str:
-    return f"narrative:{hashlib.sha256(prompt.encode()).hexdigest()[:16]}"
+    return hashlib.sha256(prompt.encode()).hexdigest()[:16]
 
 
 async def generate_narrative(
@@ -118,10 +129,12 @@ async def generate_narrative(
     """Returns (text, cache_hit)."""
     prompt = _build_prompt(address, score, dims, confidence)
     key = _cache_key(prompt)
-    hit = cache.get(key)
-    if hit is not None:
-        return hit["text"], True
+    cached = await ttl_cache.get(_SERVICE, key)
+    if cached is not None:
+        return cached["text"], True
 
-    text = await asyncio.to_thread(_call_gemini, prompt)
-    cache.set(key, {"text": text})
+    async with await rate_limiter.acquire(_SERVICE):
+        text, in_tok, out_tok = await asyncio.to_thread(_call_gemini, prompt)
+    rate_limiter.record_gemini_tokens(in_tok, out_tok)
+    await ttl_cache.set(_SERVICE, key, {"text": text})
     return text, False

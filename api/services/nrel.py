@@ -1,26 +1,32 @@
-"""NREL PVWatts v8 — annual production estimate for a residential PV system."""
+"""NREL PVWatts v8 — annual production estimate for a residential PV system.
+
+Phase 4: cached via ttl_cache (90d TTL — long because PVWatts models a
+steady-state climatology, not real-time conditions). No rate limiter
+applied (NREL's quota is generous and the spec does not require one).
+"""
 from __future__ import annotations
 
 import httpx
 
-from api import cache
 from api.config import get_settings
+from api.middleware import ttl_cache
 from api.models.lead import NRELData
 
 _URL = "https://developer.nrel.gov/api/pvwatts/v8.json"
+_SERVICE = "nrel"
 
 
 def _cache_key(lat: float, lng: float, system_kw: float) -> str:
-    return f"nrel:{lat:.4f},{lng:.4f}:{system_kw}"
+    return f"{lat:.4f},{lng:.4f}:{system_kw}"
 
 
 async def get_production(
     lat: float, lng: float, system_kw: float = 4.0
 ) -> tuple[NRELData, bool]:
     key = _cache_key(lat, lng, system_kw)
-    hit = cache.get(key)
-    if hit is not None:
-        return NRELData(**hit), True
+    cached = await ttl_cache.get(_SERVICE, key)
+    if cached is not None:
+        return NRELData(**cached), True
 
     settings = get_settings()
     if not settings.nrel_api_key:
@@ -46,5 +52,5 @@ async def get_production(
         capacity_factor=out.get("capacity_factor"),
         solar_radiation=out.get("solrad_annual"),
     )
-    cache.set(key, result.model_dump())
+    await ttl_cache.set(_SERVICE, key, result.model_dump())
     return result, False

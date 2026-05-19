@@ -1,8 +1,9 @@
-
 """Google Solar API — buildingInsights:findClosest.
 
-Cached 30 days by lowercased address (per Solar API ToS).
-Rate-limited to 100 req/min by api.rate_limit.solar_limiter.
+Phase 4: caching via api.middleware.ttl_cache (Redis hot / BigQuery cold,
+30d TTL); rate limited via api.middleware.rate_limiter ("solar" service:
+10 concurrent + 100/min burst, per Google ToS). 404s are cached with a
+shorter 7d override so we re-probe Solar coverage sooner.
 
 TRUTH-FIRST: the public Solar API does not expose detected arrays. We
 emit `has_existing_solar=None` rather than guessing False. A real
@@ -12,16 +13,17 @@ from __future__ import annotations
 
 import httpx
 
-from api import cache
 from api.config import get_settings
+from api.middleware import rate_limiter, ttl_cache
 from api.models.lead import SolarRoofData
-from api.rate_limit import solar_limiter
 
 _URL = "https://solar.googleapis.com/v1/buildingInsights:findClosest"
+_SERVICE = "solar"
+_NOT_FOUND_TTL_SECONDS = 7 * 86400  # re-probe 404s after a week
 
 
 def _cache_key(address: str) -> str:
-    return f"solar:{address.lower().strip()}"
+    return address.lower().strip()
 
 
 def _empty(building_name: str = "(no Solar coverage)") -> SolarRoofData:
@@ -33,29 +35,31 @@ async def get_roof_data(
 ) -> tuple[SolarRoofData, bool]:
     """Returns (data, cache_hit). Empty record on 404 (no Solar imagery)."""
     key = _cache_key(address)
-    hit = cache.get(key)
-    if hit is not None:
-        return SolarRoofData(**hit), True
+    cached = await ttl_cache.get(_SERVICE, key)
+    if cached is not None:
+        return SolarRoofData(**cached), True
 
     settings = get_settings()
     if not settings.google_solar_api_key:
         raise RuntimeError("GOOGLE_SOLAR_API_KEY not set")
 
-    await solar_limiter.acquire()
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.get(
-            _URL,
-            params={
-                "location.latitude": lat,
-                "location.longitude": lng,
-                "requiredQuality": "HIGH",
-                "key": settings.google_solar_api_key,
-            },
-        )
+    async with await rate_limiter.acquire(_SERVICE):
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.get(
+                _URL,
+                params={
+                    "location.latitude": lat,
+                    "location.longitude": lng,
+                    "requiredQuality": "HIGH",
+                    "key": settings.google_solar_api_key,
+                },
+            )
 
     if r.status_code == 404:
         result = _empty()
-        cache.set(key, result.model_dump(), ttl_days=7)
+        await ttl_cache.set(
+            _SERVICE, key, result.model_dump(), ttl_override=_NOT_FOUND_TTL_SECONDS
+        )
         return result, False
     r.raise_for_status()
 
@@ -72,5 +76,5 @@ async def get_roof_data(
         has_existing_solar=None,  # unknown — public API does not expose this
         building_name=(data.get("name") or "")[:64],
     )
-    cache.set(key, result.model_dump())
+    await ttl_cache.set(_SERVICE, key, result.model_dump())
     return result, False

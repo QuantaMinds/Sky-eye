@@ -16,7 +16,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import get_settings
 from api.middleware import _bq_cache
-from api.routers import batch, health, lead_score, narrative as narrative_router, reports
+from api.routers import (
+    batch, change_detection, health, lead_score, narrative as narrative_router, reports,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +75,7 @@ app.include_router(lead_score.router)
 app.include_router(batch.router)
 app.include_router(narrative_router.router)
 app.include_router(reports.router)
+app.include_router(change_detection.router)
 
 
 @app.get("/")

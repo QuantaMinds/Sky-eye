@@ -1,5 +1,9 @@
 # Engineering Principles — EYE-Lead / Sky-eye
 
+> These six rules don't prevent failures. They turn failures into faster recoveries and durable lessons. Every rule is named after a failure that already happened on this codebase.
+
+> **When to read this:** before starting a new phase. Re-read the rule that applies when a forensic finding lands. The full document takes 8 minutes; that's the cost of every phase shipping wrong.
+
 Six rules. Not commit-required reading. A touchstone for anyone working on this codebase — including future-you on a different day. Each rule has a name, a one-sentence shape, the **why** (the failure mode it exists to prevent), the **how to apply**, and a real codebase example.
 
 When you see one of these patterns playing out in a task, refer back here. When you find yourself violating one to ship faster, stop — the cost of the violation is bigger than the cost of the delay, every time.

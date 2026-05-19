@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom"
 import { DemoCard } from "@/components/DemoCard"
 import { DEMO_SCORES } from "@/lib/demo-data"
 
@@ -10,8 +11,16 @@ export function Landing() {
           Solar lead scoring from public data — every claim verifiable against the LA County
           Assessor portal, Project Sunroof, and data.census.gov.
         </p>
+        <div className="flex justify-center gap-3 pt-2">
+          <Link
+            to="/batch"
+            className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+          >
+            Score a batch of addresses →
+          </Link>
+        </div>
         <p className="text-xs text-muted-foreground/70">
-          Phase 2 demo. Live address scoring lands in Phase 3.
+          Phase 2 demo. Live single-address scoring lands in Phase 3.
         </p>
       </section>
 

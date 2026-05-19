@@ -180,12 +180,16 @@ async def test_narrative_uses_flash(monkeypatch: pytest.MonkeyPatch) -> None:
     reason="needs Google + NREL keys + GCP project for Vertex",
 )
 def test_full_pipeline_integration() -> None:
+    # Address swapped 2026-05-19: "100 Long Beach Blvd" is now correctly
+    # classified as a 156-unit building and routes to the multi-unit-skip
+    # 422 path (covered by test_phase2). This test exercises the happy path
+    # on a verified SFR from the regenerated pilot_tony_FINAL.csv.
     from fastapi.testclient import TestClient
     from api.main import app
     with TestClient(app) as client:
         r = client.post(
             "/api/v1/score-lead",
-            json={"address": "100 Long Beach Blvd, Long Beach, CA"},
+            json={"address": "3581 Monica Ave, Long Beach, CA, 90808"},
         )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -269,3 +273,80 @@ async def test_narrative_prompt_blocks_fabrication(monkeypatch: pytest.MonkeyPat
         assert f"{name:<22}  UNAVAILABLE" in prompt, f"{name} not flagged unavailable"
     # The explicit anti-fabrication rule must be present.
     assert "NEVER claim the resident is an owner" in prompt
+
+
+# --- apn surfaces in /score-lead response ----------------------------------
+#
+# The frontend routes scored results to /score/:apn and saves them by APN
+# in session storage. Before this regression test landed, ScoreResponse
+# omitted the field at the top level, so the single-address flow had no
+# key to route on. Matched-pair Rule-3 gate: assert apn populated when
+# parcel resolves, AND null when no parcel resolves.
+
+def test_score_response_includes_apn_when_parcel_resolves(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi.testclient import TestClient
+    from api.main import app
+    from api.models.lead import (
+        CensusData, DacInfo, GeocodingResult, NRELData, ParcelData, SolarRoofData,
+        UtilityInfo,
+    )
+    from api.services import (
+        census, dac, geocoding, narrative as nsv, nrel, parcel_lookup, solar_api, utility,
+    )
+
+    async def fake_geo(addr): return GeocodingResult(lat=33.77, lng=-118.19, formatted_address=addr), False
+    async def fake_solar(lat, lng, a): return SolarRoofData(max_array_panels=10, max_kwh_year=12000), False
+    async def fake_census(lat, lng): return CensusData(median_household_income=85000), False
+    async def fake_nrel(lat, lng, **kw): return NRELData(ac_annual_kwh=8000), False
+    async def fake_parcel(lat, lng): return ParcelData(apn="7100-001-001", stream="private", is_residential=True), False
+    async def fake_util(lat, lng): return UtilityInfo(), False
+    async def fake_dac(lat, lng): return DacInfo(is_dac=False), False
+    async def fake_narr(*a, **kw): return "narrative", False
+
+    monkeypatch.setattr(geocoding, "geocode", fake_geo)
+    monkeypatch.setattr(solar_api, "get_roof_data", fake_solar)
+    monkeypatch.setattr(census, "get_block_group_data", fake_census)
+    monkeypatch.setattr(nrel, "get_production", fake_nrel)
+    monkeypatch.setattr(parcel_lookup, "lookup_by_point", fake_parcel)
+    monkeypatch.setattr(utility, "lookup_by_point", fake_util)
+    monkeypatch.setattr(dac, "lookup_by_point", fake_dac)
+    monkeypatch.setattr(nsv, "generate_narrative", fake_narr)
+
+    with TestClient(app) as client:
+        r = client.post("/api/v1/score-lead", json={"address": "100 Long Beach Blvd"})
+    assert r.status_code == 200, r.text
+    assert r.json()["apn"] == "7100-001-001"
+
+
+def test_score_response_apn_is_null_outside_parcel_layer(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi.testclient import TestClient
+    from api.main import app
+    from api.models.lead import (
+        CensusData, DacInfo, GeocodingResult, NRELData, SolarRoofData, UtilityInfo,
+    )
+    from api.services import (
+        census, dac, geocoding, narrative as nsv, nrel, parcel_lookup, solar_api, utility,
+    )
+
+    async def fake_geo(addr): return GeocodingResult(lat=33.77, lng=-118.19, formatted_address=addr), False
+    async def fake_solar(lat, lng, a): return SolarRoofData(max_array_panels=10, max_kwh_year=12000), False
+    async def fake_census(lat, lng): return CensusData(median_household_income=85000), False
+    async def fake_nrel(lat, lng, **kw): return NRELData(ac_annual_kwh=8000), False
+    async def fake_parcel(lat, lng): return None, False  # outside layer
+    async def fake_util(lat, lng): return UtilityInfo(), False
+    async def fake_dac(lat, lng): return DacInfo(is_dac=False), False
+    async def fake_narr(*a, **kw): return "narrative", False
+
+    monkeypatch.setattr(geocoding, "geocode", fake_geo)
+    monkeypatch.setattr(solar_api, "get_roof_data", fake_solar)
+    monkeypatch.setattr(census, "get_block_group_data", fake_census)
+    monkeypatch.setattr(nrel, "get_production", fake_nrel)
+    monkeypatch.setattr(parcel_lookup, "lookup_by_point", fake_parcel)
+    monkeypatch.setattr(utility, "lookup_by_point", fake_util)
+    monkeypatch.setattr(dac, "lookup_by_point", fake_dac)
+    monkeypatch.setattr(nsv, "generate_narrative", fake_narr)
+
+    with TestClient(app) as client:
+        r = client.post("/api/v1/score-lead", json={"address": "1 Outside LA"})
+    assert r.status_code == 200, r.text
+    assert r.json()["apn"] is None

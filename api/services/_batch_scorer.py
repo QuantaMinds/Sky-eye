@@ -23,6 +23,7 @@ from api.services import (
     solar_api,
     utility,
 )
+from api.services.skip_rules import multi_unit_cause
 # NOTE: narrative is INTENTIONALLY not imported here. Vertex AI text
 # generation takes 1.5-4s per call. At 500 leads that adds 12-33 minutes
 # of single-worker latency, freezing the batch path. Narratives are
@@ -76,34 +77,15 @@ async def score_one_address(job_id: str, index: int, address: str) -> dict[str, 
         )
     )
 
-    # Multi-unit building skip. Two distinct signals, either fires:
-    #
-    #   (a) resolution_confidence == "building" — the spatial lookup returned
-    #       a polygon shared by multiple AINs (condo siblings). The returned
-    #       AIN is one of the siblings, not necessarily the queried unit.
-    #
-    #   (b) units > 1 — a single AIN represents a multi-unit building
-    #       (apartment / multiplex / triplex). The condo-sibling check misses
-    #       this case because ains_at_point == 1.
-    #
-    # Both surface the same scored_status so Tony's dashboard reads them as
-    # one cohort ("Multi-unit buildings excluded"); the error_message
-    # distinguishes the cause for debugging. Per C-46 residential-rooftop
-    # scope, individual units have no roof-ownership signal — excluded from
-    # ranking. NULL units doesn't fire the skip (truth-first: don't penalize
-    # on absent signal). See [[feedback-no-score-renormalization]].
+    # Multi-unit building skip — rule lives in api/services/skip_rules.py
+    # so single-call router, batch scorer, and pilot filter share one source
+    # of truth. Both signals (polygon-share and units>1) surface the same
+    # scored_status so Tony's dashboard reads them as one cohort
+    # ("Multi-unit buildings excluded"); the error_message distinguishes the
+    # cause for debugging.
     if parcel is not None:
-        polygon_collision = parcel.resolution_confidence == "building"
-        bldg_units = parcel.units if parcel.units is not None else 1
-        single_ain_multi_unit = bldg_units > 1
-        if polygon_collision or single_ain_multi_unit:
-            if polygon_collision:
-                cause = (
-                    f"{parcel.ains_at_point} AINs share this polygon "
-                    f"(condo siblings)"
-                )
-            else:
-                cause = f"{bldg_units} units on a single AIN (apartment / multiplex)"
+        cause = multi_unit_cause(parcel)
+        if cause is not None:
             return {
                 **base,
                 "scored_status": "multi_unit_skipped",

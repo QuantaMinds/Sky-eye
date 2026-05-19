@@ -19,6 +19,7 @@ from api.services import (
     solar_api,
     utility,
 )
+from api.services.skip_rules import multi_unit_cause
 
 router = APIRouter(prefix="/api/v1", tags=["lead-score"])
 
@@ -54,6 +55,24 @@ async def score_lead(req: ScoreRequest) -> ScoreResponse:
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
+    # Multi-unit building skip — rule lives in api/services/skip_rules.py
+    # so the single-call router, batch scorer, and pilot filter all share
+    # one source of truth (CLAUDE.md Rule 3 + audit-all-code-paths memory).
+    # 422 lets the UI display the cause via friendlyScoreError
+    # (frontend/src/lib/address.ts).
+    if parcel is not None:
+        cause = multi_unit_cause(parcel)
+        if cause is not None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"This address resolves to a multi-unit building "
+                    f"({cause}). LeadLens scores single-family residences only — "
+                    f"individual units don't have a roof-ownership signal we can "
+                    f"underwrite. Try a different address."
+                ),
+            )
+
     score, dims, weighting_mode, confidence = scoring.compute_score(
         roof, cens, pv, parcel, util, dac_info,
     )
@@ -65,6 +84,7 @@ async def score_lead(req: ScoreRequest) -> ScoreResponse:
         address=geo.formatted_address,
         lat=geo.lat,
         lng=geo.lng,
+        apn=parcel.apn if parcel else None,
         score=score,
         score_confidence=confidence,
         weighting_mode=weighting_mode,

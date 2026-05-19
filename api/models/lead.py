@@ -142,6 +142,10 @@ class ScoreResponse(BaseModel):
     address: str
     lat: float
     lng: float
+    # LA County Assessor ID. None when no parcel resolved (outside LA County
+    # layer). The frontend uses this as the route key for /score/:apn and as
+    # the dashed-format identifier on the LA Assessor verify link.
+    apn: str | None = None
     score: float = Field(ge=0, le=1)
     # Fraction of weights backed by real data — 1.0 only if every dim is available.
     score_confidence: float = Field(ge=0, le=1)

@@ -34,7 +34,27 @@ from api.services import (  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _isolated_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Tier 1: legacy api.cache SQLite (still used by parcel_lookup et al)
     monkeypatch.setattr(cache, "_DB_PATH", tmp_path / "test_cache.db")
+    # Tier 2: ttl_cache (Phase 4). Two leak vectors to plug:
+    #   a) the module-level fakeredis instance persists in-process state
+    #      across tests in the same pytest run -> swap a fresh one per test
+    #   b) the BQ cold layer reads/writes the REAL leadlens.api_cache table
+    #      in sky-eye-496604, which means narratives generated in one test
+    #      run get returned as `was_cached=True` in subsequent runs. Stub
+    #      the BQ tier to a no-op so tests never touch the real table.
+    from api.middleware import _bq_cache, ttl_cache as _ttl
+    from fakeredis import aioredis as _fr
+    _ttl._set_redis_client_for_tests(_fr.FakeRedis(decode_responses=True))
+
+    async def _bq_get_stub(*args, **kwargs):
+        return None
+
+    async def _bq_set_stub(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(_bq_cache, "get", _bq_get_stub)
+    monkeypatch.setattr(_bq_cache, "set", _bq_set_stub)
 
 
 def _have(*keys: str) -> bool:
@@ -133,9 +153,11 @@ def test_scoring_computes_correctly() -> None:
 async def test_narrative_uses_flash(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, str] = {}
 
-    def fake_call(prompt: str) -> str:
+    def fake_call(prompt: str) -> tuple[str, int, int]:
+        # _call_gemini's real signature returns (text, input_tokens, output_tokens)
+        # so the rate_limiter token counter has a usage number to record.
         captured["prompt"] = prompt
-        return "This lead has strong roof potential and..."
+        return "This lead has strong roof potential and...", 100, 50
 
     monkeypatch.setattr(narrative, "_call_gemini", fake_call)
     dims = _all_dims_unavailable()
@@ -188,7 +210,14 @@ def test_full_pipeline_integration() -> None:
 
 @pytest.mark.asyncio
 async def test_cache_prevents_duplicate_calls() -> None:
-    cache.set("geocode:123 main st", {"lat": 1.5, "lng": 2.5, "formatted_address": "Seeded"})
+    # Geocoding migrated from api.cache (SQLite) to ttl_cache (Redis+BQ) in
+    # Phase 4. Seed the new cache with the same service+key the production
+    # code reads: service='geocoding', key = address.lower().strip().
+    from api.middleware import ttl_cache
+    await ttl_cache.set(
+        "geocoding", "123 main st",
+        {"lat": 1.5, "lng": 2.5, "formatted_address": "Seeded"},
+    )
     result, was_cached = await geocoding.geocode("123 Main St")
     assert was_cached is True and result.lat == 1.5
 
@@ -225,10 +254,12 @@ def test_score_does_NOT_renormalize_when_dims_null() -> None:
 async def test_narrative_prompt_blocks_fabrication(monkeypatch: pytest.MonkeyPatch) -> None:
     """If ownership is unavailable, the prompt must instruct Gemini not to claim it."""
     captured: dict[str, str] = {}
-    monkeypatch.setattr(
-        narrative, "_call_gemini",
-        lambda p: captured.setdefault("prompt", p) or "narrative text",
-    )
+
+    def fake_call(prompt: str) -> tuple[str, int, int]:
+        captured["prompt"] = prompt
+        return "narrative text", 100, 50
+
+    monkeypatch.setattr(narrative, "_call_gemini", fake_call)
     dims = _all_dims_unavailable()
     dims.roof_potential = DimensionValue(value=0.9, source="Google Solar API")
     await narrative.generate_narrative("Test Address", 0.9, dims, 0.25)

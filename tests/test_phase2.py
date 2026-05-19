@@ -99,10 +99,23 @@ def test_batch_rejects_501() -> None:
 def test_batch_processes_in_parallel(
     monkeypatch: pytest.MonkeyPatch, stub_bq: dict[str, list[Any]]
 ) -> None:
-    """50 addresses × 100ms sleep. Serial = 5.0s; parallel(10) ≈ 0.5s.
-    Allow generous headroom for Windows scheduler jitter — assert <2.0s."""
+    """50 addresses × 100ms sleep. Concurrency cap is SOLAR_CONCURRENCY=10.
+
+    Two assertions:
+      1. Structural: peak in-flight task count gets close to the cap. This
+         proves parallelism is happening, independent of wall-clock jitter.
+      2. Timing: elapsed is strictly less than serial (5.0s). On Windows,
+         asyncio scheduling overhead pushes a "perfect" run from the
+         theoretical 0.5s up to ~3-4s. The serial-or-better check still
+         catches any regression that serializes the work.
+    """
+    state = {"active": 0, "peak": 0}
+
     async def slow_score(job_id, idx, addr):
+        state["active"] += 1
+        state["peak"] = max(state["peak"], state["active"])
         await asyncio.sleep(0.1)
+        state["active"] -= 1
         return _ok_row(job_id, idx, addr)
     monkeypatch.setattr(_batch_scorer, "score_one_address", slow_score)
 
@@ -114,7 +127,12 @@ def test_batch_processes_in_parallel(
     assert r.status_code == 202
     # FastAPI BackgroundTasks runs the work after sending the response but
     # before TestClient unblocks. So elapsed covers the full batch.
-    assert elapsed < 2.0, f"batch took {elapsed:.2f}s — not parallel enough"
+    assert state["peak"] >= 5, (
+        f"peak concurrency was {state['peak']} — work is being serialized"
+    )
+    assert elapsed < 5.0, (
+        f"batch took {elapsed:.2f}s — at or slower than serial (50 * 0.1s = 5.0s)"
+    )
 
 
 # --- 4. Each scored lead writes to BigQuery -----------------------------
@@ -625,14 +643,11 @@ def test_create_job_uses_dml_insert_not_streaming(
 
 
 def test_cache_hits_skip_api_calls() -> None:
-    """Hit the real geocoding service via the SQLite cache. Seeded entries
-    must return without invoking the HTTP transport at all."""
+    """Hit the real geocoding service via the ttl_cache (Phase 4 migration
+    from api.cache SQLite -> ttl_cache Redis+BQ). Seeded entries must return
+    without invoking the HTTP transport at all."""
+    from api.middleware import ttl_cache
     from api.services import geocoding as geo_service
-
-    local_cache.set(
-        "geocode:cached address",
-        {"lat": 33.77, "lng": -118.19, "formatted_address": "Cached Address"},
-    )
 
     async def fail_if_called(*args, **kwargs):  # pragma: no cover
         raise AssertionError("HTTP must not be called when cache is warm")
@@ -652,7 +667,15 @@ def test_cache_hits_skip_api_calls() -> None:
     original = httpx.AsyncClient
     httpx.AsyncClient = lambda *a, **kw: _ExplodingClient()  # type: ignore[assignment]
     try:
-        result, was_cached = asyncio.run(geo_service.geocode("Cached Address"))
+        async def _run():
+            # Seed ttl_cache with service='geocoding', key = address.lower().strip()
+            # (matches geocoding._cache_key) BEFORE the geocode call.
+            await ttl_cache.set(
+                "geocoding", "cached address",
+                {"lat": 33.77, "lng": -118.19, "formatted_address": "Cached Address"},
+            )
+            return await geo_service.geocode("Cached Address")
+        result, was_cached = asyncio.run(_run())
     finally:
         httpx.AsyncClient = original  # type: ignore[assignment]
     assert was_cached is True

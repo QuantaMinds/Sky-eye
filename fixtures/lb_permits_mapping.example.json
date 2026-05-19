@@ -1,0 +1,14 @@
+{
+  "_comment": "Template for --mapping arg to scripts/ingest_lb_permits.py. Copy to lb_permits_mapping.json and replace the right-hand-side values with the ACTUAL field names from the LB Socrata dataset. View raw fields with: curl '<dataset-url>?$limit=1' | jq 'keys'. Truth-first: if LB's dataset does not include APN (some jurisdictions don't), leave 'ain' OUT of the mapping; permits will be written with NULL apn, and permit_matcher will return source='unavailable' for those — NOT False.",
+
+  "permit_id": "permit_number",
+  "ain": "parcel_number",
+  "permit_type": "permit_type",
+  "permit_status": "status",
+  "application_date": "application_date",
+  "issued_date": "issued_date",
+  "finaled_date": "finaled_date",
+  "description": "description",
+  "estimated_value": "valuation",
+  "zip": "zip_code"
+}

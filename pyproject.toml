@@ -26,6 +26,8 @@ dependencies = [
     "matplotlib>=3.9",
     # Phase 4 — production caching + rate limiting
     "redis>=5.0",
+    # Phase 5 — TaxLens change detection (chip montage for labeling tool)
+    "Pillow>=10.4",
 ]
 
 [project.optional-dependencies]

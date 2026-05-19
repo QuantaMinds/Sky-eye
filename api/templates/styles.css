@@ -1,0 +1,118 @@
+/* Two-page contract: page 1 is the always-rendered summary (hero, chart,
+   cards). The narrative is the only variable-length block and flows to
+   page 2 when long — see feedback-two-page-overflow-contract.md. The
+   attribution lives in the running footer so it appears on every page,
+   not only the last one. */
+@page {
+  size: Letter;
+  margin: 0.5in 0.6in 0.7in 0.6in;
+  @bottom-left {
+    content: element(footer);
+    vertical-align: top;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  font-family: "Helvetica", "Arial", sans-serif;
+  color: #0f172a;
+  font-size: 10pt;
+  line-height: 1.35;
+  margin: 0;
+}
+
+h2 {
+  font-size: 11pt;
+  margin: 0 0 6pt 0;
+  color: #1e293b;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 3pt;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.hdr {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #0f172a;
+  padding-bottom: 6pt;
+  margin-bottom: 10pt;
+}
+.logo { max-height: 36pt; max-width: 180pt; }
+.logo-text { font-size: 14pt; font-weight: 700; color: #0f172a; }
+.hdr-meta { text-align: right; font-size: 8.5pt; color: #475569; }
+.hdr-meta-label { text-transform: uppercase; letter-spacing: 0.06em; }
+.hdr-meta-value { color: #0f172a; font-weight: 600; }
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 10pt;
+  padding: 8pt 10pt;
+  background: #f8fafc;
+  border-left: 4pt solid #2563eb;
+}
+.hero-label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 8pt;
+  color: #475569;
+}
+.hero-value { font-size: 14pt; font-weight: 600; }
+.hero-sub { font-size: 8.5pt; color: #475569; margin-top: 2pt; }
+.hero-score { text-align: right; }
+.hero-score-value {
+  font-size: 32pt;
+  font-weight: 700;
+  color: #2563eb;
+  line-height: 1;
+  margin-top: 2pt;
+}
+
+.map { margin-bottom: 10pt; }
+.map img { width: 100%; height: 140pt; object-fit: cover; border-radius: 4pt; }
+.map-missing {
+  height: 60pt;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  color: #64748b;
+  font-style: italic;
+  border-radius: 4pt;
+}
+
+.dims { margin-bottom: 10pt; }
+.chart { width: 100%; height: auto; }
+
+.two-col {
+  display: flex;
+  gap: 10pt;
+  margin-bottom: 10pt;
+}
+.card { flex: 1; }
+dl { margin: 0; }
+dt {
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  margin-top: 6pt;
+}
+dd { margin: 1pt 0 0 0; font-size: 10pt; font-weight: 600; }
+dd em { color: #94a3b8; font-style: italic; font-weight: 400; }
+
+.narrative { margin-bottom: 12pt; }
+.narrative p { margin: 0; text-align: justify; }
+.narrative em { color: #94a3b8; }
+
+.attribution {
+  position: running(footer);
+  font-size: 7.5pt;
+  color: #64748b;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 4pt;
+  width: 100%;
+}

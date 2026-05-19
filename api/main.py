@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import get_settings
-from api.routers import batch, health, lead_score, narrative as narrative_router
+from api.routers import batch, health, lead_score, narrative as narrative_router, reports
 
 settings = get_settings()
 
@@ -31,6 +31,7 @@ app.include_router(health.router)
 app.include_router(lead_score.router)
 app.include_router(batch.router)
 app.include_router(narrative_router.router)
+app.include_router(reports.router)
 
 
 @app.get("/")

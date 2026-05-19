@@ -6,6 +6,7 @@ import time
 
 from fastapi import APIRouter, HTTPException
 
+from api.data_sources import DATA_SOURCES
 from api.models.lead import ScoreRequest, ScoreResponse
 from api.services import (
     census,
@@ -20,17 +21,6 @@ from api.services import (
 )
 
 router = APIRouter(prefix="/api/v1", tags=["lead-score"])
-
-_DATA_SOURCES = [
-    "Google Maps Platform Geocoding API",
-    "Google Maps Platform Solar API",
-    "US Census ACS 5-year (2024 vintage)",
-    "NREL PVWatts V8",
-    "LA County Assessor (Rolls 2021-2024, BigQuery)",
-    "CPUC Electric IOU Territory + LA County DRP city boundaries (utility)",
-    "OEHHA SB-535 Disadvantaged Communities (Tribal update 2023/2024)",
-    "Google Vertex AI (Gemini 2.5 Flash)",
-]
 
 
 @router.post("/score-lead", response_model=ScoreResponse)
@@ -83,7 +73,7 @@ async def score_lead(req: ScoreRequest) -> ScoreResponse:
         ces_percentile=dac_info.ces_percentile if dac_info else None,
         dimensions=dims,
         narrative=text,
-        data_sources=_DATA_SOURCES,
+        data_sources=list(DATA_SOURCES),
         cached=cached,
         latency_ms=int((time.perf_counter() - started) * 1000),
     )

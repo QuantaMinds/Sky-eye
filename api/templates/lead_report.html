@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Solar Lead Report — {{ address }}</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  {# attribution lives at the top of the body so its `position: running(footer)`
+     value is captured on page 1 (CSS GCPM: a running element is set when its
+     source position is reached). Moving it to the bottom causes page 1 to have
+     no footer because the element hasn't been "seen" yet by that page. #}
+  <footer class="attribution">
+    Data sources: {{ data_sources|join("; ") }}. Generated {{ generated_at }}.
+  </footer>
+
+  <header class="hdr">
+    {% if installer_logo_data_uri %}
+      <img class="logo" src="{{ installer_logo_data_uri }}" alt="{{ installer_name }} logo">
+    {% else %}
+      <div class="logo-text">{{ installer_name }}</div>
+    {% endif %}
+    <div class="hdr-meta">
+      <div class="hdr-meta-label">Generated</div>
+      <div class="hdr-meta-value">{{ generated_at }}</div>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="hero-address">
+      <div class="hero-label">Address</div>
+      <div class="hero-value">{% if address %}{{ address }}{% else %}<em>Address unknown</em>{% endif %}</div>
+      {% if apn %}<div class="hero-sub">APN {{ apn }}</div>{% endif %}
+    </div>
+    <div class="hero-score">
+      <div class="hero-label">Lead score</div>
+      <div class="hero-score-value">{% if priority_score is not none %}{{ "%.2f"|format(priority_score) }}{% else %}<em>—</em>{% endif %}</div>
+      {% if score_confidence is not none %}
+        <div class="hero-sub">confidence {{ "%.0f"|format(score_confidence * 100) }}%</div>
+      {% else %}
+        <div class="hero-sub">confidence unavailable</div>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if map_data_uri %}
+    <section class="map">
+      <img src="{{ map_data_uri }}" alt="Parcel map">
+    </section>
+  {% else %}
+    <section class="map map-missing">Map unavailable</section>
+  {% endif %}
+
+  <section class="dims">
+    <h2>Score breakdown</h2>
+    <img class="chart" src="data:image/png;base64,{{ chart_png_b64 }}" alt="Dimension bar chart">
+  </section>
+
+  <div class="two-col">
+    <section class="card">
+      <h2>Roof</h2>
+      <dl>
+        <dt>Panels (max array)</dt>
+        <dd>{% if roof.max_array_panels is not none %}{{ roof.max_array_panels }}{% else %}<em>Unavailable</em>{% endif %}</dd>
+        <dt>Annual generation</dt>
+        <dd>{% if roof.max_kwh_year is not none %}{{ "%.0f"|format(roof.max_kwh_year) }} kWh/yr{% else %}<em>Unavailable</em>{% endif %}</dd>
+        <dt>Sunshine hours</dt>
+        <dd>{% if roof.max_sunshine_hours is not none %}{{ "%.0f"|format(roof.max_sunshine_hours) }} hr/yr{% else %}<em>Unavailable</em>{% endif %}</dd>
+        <dt>Year built</dt>
+        <dd>{% if year_built is not none %}{{ year_built }}{% else %}<em>Unavailable</em>{% endif %}</dd>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2>Financial</h2>
+      <dl>
+        <dt>Estimated annual savings</dt>
+        <dd>{% if financial.estimated_annual_savings_usd is not none %}${{ "{:,.0f}".format(financial.estimated_annual_savings_usd) }}{% else %}<em>Unavailable</em>{% endif %}</dd>
+        <dt>Utility rate</dt>
+        <dd>{% if financial.rate_per_kwh_usd is not none %}${{ "%.2f"|format(financial.rate_per_kwh_usd) }} / kWh{% else %}<em>Unavailable</em>{% endif %}</dd>
+        <dt>Simple payback</dt>
+        <dd>{% if financial.simple_payback_years is not none %}{{ "%.1f"|format(financial.simple_payback_years) }} yrs{% else %}<em>Unavailable</em>{% endif %}</dd>
+        <dt>Assessor value</dt>
+        <dd>{% if total_value is not none %}${{ "{:,.0f}".format(total_value) }}{% else %}<em>Unavailable</em>{% endif %}</dd>
+      </dl>
+    </section>
+  </div>
+
+  <section class="narrative">
+    <h2>Analyst summary</h2>
+    {% if narrative %}
+      <p>{{ narrative }}</p>
+    {% else %}
+      <p><em>Narrative not yet generated for this lead.</em></p>
+    {% endif %}
+  </section>
+
+</body>
+</html>

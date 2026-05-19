@@ -85,3 +85,7 @@ Thumbs.db
 # Never committed: PII (owner names, mailing addresses after Tier-2 scrape)
 # must not enter git history.
 out/
+
+# Phase 3 — generated PDF artifacts from scripts/generate_sample_report.py
+# and ad-hoc render scripts. Regenerated locally; not source of truth.
+tmp/

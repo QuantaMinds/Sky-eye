@@ -1,0 +1,47 @@
+{
+  "_doc": "View-dict fixture for Phase 3 PDF generation. Shape mirrors what api.services.report_data.build_view() returns: BQ batch_results columns + roof/nrel data fetched live (cached). One dim AND simple_payback_years are intentionally null to exercise the Rule-3 'unavailable' branch. simple_payback_years is null because Phase 3 has no cost model — keep it null to match build_view's contract.",
+  "apn": "7156012038",
+  "address": "1234 Sunset Blvd, Los Angeles, CA 90026",
+  "lat": 34.0779,
+  "lng": -118.2604,
+  "priority_score": 0.74,
+  "score_confidence": 0.86,
+  "stream": "private",
+  "is_dac": false,
+  "ces_percentile": 38.2,
+  "resolved_ain": "7156012038",
+  "year_built": 1953,
+  "sqft_main": 1840,
+  "total_value": 612500.0,
+  "has_homeowners_exemption": true,
+  "dimensions": [
+    {"key": "roof_potential",       "label": "Roof potential",        "value": 0.78, "source": "google_solar_api"},
+    {"key": "income_qualification", "label": "Income qualification",  "value": 0.62, "source": "census_acs_5yr"},
+    {"key": "ownership",            "label": "Ownership",             "value": 0.95, "source": "la_county_assessor"},
+    {"key": "bill_pain",            "label": "Bill pain",             "value": 0.71, "source": "utility_rates"},
+    {"key": "equity_proxy",         "label": "Equity proxy",          "value": 0.83, "source": "la_county_assessor"},
+    {"key": "no_existing_solar",    "label": "No existing solar",     "value": null, "source": "unavailable"},
+    {"key": "intent_signal",        "label": "Intent signal",         "value": null, "source": "unavailable"}
+  ],
+  "roof": {
+    "max_array_panels": 24,
+    "max_kwh_year": 11420.5,
+    "max_sunshine_hours": 1742.0
+  },
+  "nrel": {
+    "ac_annual_kwh": 10840.0,
+    "capacity_factor": 0.18
+  },
+  "financial": {
+    "estimated_annual_savings_usd": 3252.0,
+    "rate_per_kwh_usd": 0.30,
+    "simple_payback_years": null
+  },
+  "narrative": "This Echo Park single-family home shows strong rooftop solar potential. The Google Solar API estimates capacity for 24 panels and roughly 11,400 kWh/year of generation — enough to offset the bulk of an LADWP residential bill at the current ~$0.30/kWh tier. Ownership is high-confidence (LA County Assessor homeowner’s exemption on file), and the household sits below the area median income, which qualifies the lead for several state and federal incentives. Solar-array detection and intent signals are unavailable in this view; treat them as unknown rather than negative.",
+  "data_sources": [
+    "Google Maps Platform Solar API",
+    "US Census ACS 5-year (2024 vintage)",
+    "NREL PVWatts V8",
+    "LA County Assessor"
+  ]
+}

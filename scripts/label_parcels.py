@@ -6,9 +6,17 @@ prompts the labeler for a verdict. Appends to fixtures/known_changes/
 labels.csv. Resumable: APNs already in labels.csv are skipped.
 
 Usage:
-  python scripts/label_parcels.py --apns apns.txt --year-a 2022 --year-b 2024
+  python scripts/label_parcels.py --apns apns.txt --year-a 2020 --year-b 2022
   python scripts/label_parcels.py --bbox -118.20,33.75,-118.10,33.82 --limit 30 \
-      --year-a 2022 --year-b 2024
+      --year-a 2020 --year-b 2022
+
+NAIP coverage (verified 2026-05-19 via EE): California NAIP flights
+fired in 2018, 2020, 2022. NO 2024 imagery exists yet — the cycle is
+biennial and the 2024 season isn't in EE. Asking for year_b=2024 makes
+every chip pair fail with 'no NAIP pair' and skip the parcel. The
+working pair today is (2020, 2022); use (2018, 2020) if you need the
+older comparison. AlphaEarth has 2024 but the human-labeling
+foundation depends on NAIP, so the labeler MUST use NAIP-available years.
 
 Why this exists: Rule 3. The Phase 5 precision gate is meaningless
 without real labels. Inventing fake labels to make the test pass is

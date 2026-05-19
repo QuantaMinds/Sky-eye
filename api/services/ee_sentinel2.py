@@ -24,17 +24,19 @@ _MAX_CLOUD_PCT = 30  # tighter than 60 default; we want clean composites
 
 
 def _mask_clouds(img):
-    """SR Harmonized comes with QA60 cirrus/cloud bits. Returns a masked
-    image where cloud/cirrus pixels are dropped from the median."""
-    ee = ee_module()  # safe — already initialized by caller
-    qa = img.select("QA60")
-    cloud_bit = 1 << 10
-    cirrus_bit = 1 << 11
-    mask = (
-        qa.bitwiseAnd(cloud_bit).eq(0)
-        .And(qa.bitwiseAnd(cirrus_bit).eq(0))
+    """SR Harmonized: use the SCL classification band (4=vegetation, 5=
+    bare soil, 6=water, 7=unclassified, 11=snow are "keep"; 3=shadow,
+    8=cloud-medium-prob, 9=cloud-high-prob, 10=cirrus are "drop").
+
+    QA60 was DEPRECATED for SR Harmonized in 2022-06 (all zeros for
+    scenes after that date), so the previous QA60-based mask silently
+    dropped no clouds on recent scenes — the median composite was
+    cloud-contaminated. Found in the Phase 5 forensic pass."""
+    scl = img.select("SCL")
+    keep = (
+        scl.eq(4).Or(scl.eq(5)).Or(scl.eq(6)).Or(scl.eq(7)).Or(scl.eq(11))
     )
-    return img.updateMask(mask).divide(1)  # no scale change; keep raw reflectance
+    return img.updateMask(keep)
 
 
 def get_sentinel2_chip(

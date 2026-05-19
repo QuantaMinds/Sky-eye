@@ -30,7 +30,14 @@ def _client() -> bigquery.Client:
 
 def get_parcel_geometry(apn: str) -> dict[str, Any] | None:
     """Returns {apn, centroid_lat, centroid_lng, geojson, sqft_main,
-    use_category, address_situs} or None if APN not in LA County."""
+    use_category, use_subcategory, address_situs, city} or None if APN
+    not in LA County.
+
+    use_subcategory is the column the classifier prompt reads. Until the
+    Phase 5 forensic pass this column was missing from the SELECT, so
+    every Gemini Pro call received an empty 'Existing use:' line —
+    silent quality loss on the classifier prompt.
+    """
     sql = f"""
     SELECT
       apn,
@@ -39,6 +46,7 @@ def get_parcel_geometry(apn: str) -> dict[str, Any] | None:
       ST_ASGEOJSON(geom) AS geojson,
       sqft_main,
       use_category,
+      use_subcategory,
       address_situs,
       city
     FROM `{_TABLE}`
@@ -60,6 +68,7 @@ def get_parcel_geometry(apn: str) -> dict[str, Any] | None:
         "geojson": json.loads(row["geojson"]) if row["geojson"] else None,
         "sqft_main": row.get("sqft_main"),
         "use_category": row.get("use_category") or "",
+        "use_subcategory": row.get("use_subcategory") or "",
         "address_situs": row.get("address_situs") or "",
         "city": row.get("city") or "",
     }
@@ -76,10 +85,14 @@ def list_apns_in_bbox(
     commercial flavor later.
     """
     res_clause = "AND is_residential = TRUE" if residential_only else ""
+    # The LA County roll writes city as 'LONG BEACH CA' for 103,478 rows
+    # ('Long Beach' matches only 86). Without the uppercase literal this
+    # query silently returned ~0 candidates — load-bearing silent failure
+    # found in the Phase 5 forensic pass. See feedback_parser_contract.
     sql = f"""
     SELECT apn
     FROM `{_TABLE}`
-    WHERE city = 'Long Beach'
+    WHERE city = 'LONG BEACH CA'
       {res_clause}
       AND ST_INTERSECTS(
         geom,

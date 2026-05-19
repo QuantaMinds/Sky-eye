@@ -24,7 +24,7 @@ from api.models.change_detection import (
     Detection, DetectChangesRequest, DetectChangesResponse, GateBreakdown,
 )
 from api.services import (
-    change_detector, chip_extractor, confidence_pipeline,
+    change_detector, change_events_writer, chip_extractor, confidence_pipeline,
     lb_parcels, multimodal_classifier, permit_matcher,
 )
 
@@ -119,9 +119,15 @@ async def detect_changes(req: DetectChangesRequest) -> DetectChangesResponse:
     ]
     kept.sort(key=lambda d: (d.final_score or 0.0), reverse=True)
 
+    written, skipped = await change_events_writer.persist_detections(
+        kept, req.year_a, req.year_b,
+    )
+
     return DetectChangesResponse(
         bbox=req.bbox, year_a=req.year_a, year_b=req.year_b,
         candidates_considered=len(candidates),
         detections_above_threshold=len(kept),
         detections=kept,
+        persisted_rows=written,
+        persistence_skipped=skipped,
     )

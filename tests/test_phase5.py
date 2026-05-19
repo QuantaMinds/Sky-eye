@@ -311,6 +311,23 @@ def test_permit_gate_inverts_correctly() -> None:
     assert r_false.gates["no_permit"].fired is True  # no permit -> gate fires
 
 
+def test_embedding_gate_nan_distance_is_unavailable() -> None:
+    """NaN distance (zero-norm vector upstream) -> gate fired=None,
+    NOT False. `float('nan') > 0.4` is False in Python, which would
+    silently vote 'counter-evidence' for an unknown signal — exactly
+    the Rule 3 violation pattern. Matched against the numeric-distance
+    tests above."""
+    r = confidence_pipeline.evaluate(
+        alphaearth_distance=float("nan"),
+        has_permit_result=False, gemini_change_type="new_pool",
+        gemini_confidence=0.9, gemini_added_sqft=400.0,
+    )
+    assert r.gates["embedding_distance"].fired is None
+    # Available gates drops to 4, score reflects 4 fires of 4.
+    assert r.available_gates == 4 and r.fired_gates == 4
+    assert r.final_score == 1.0
+
+
 def test_value_uplift_gate_exact_threshold() -> None:
     """Threshold is STRICT > 100. 100 sqft -> False, 101 -> True. Catches
     off-by-one regressions on the boundary."""
@@ -333,7 +350,7 @@ def test_full_pipeline_e2e_with_mocks(monkeypatch: pytest.MonkeyPatch) -> None:
     from fastapi.testclient import TestClient
     from api.main import app
     from api.services import (
-        change_detector as cd, chip_extractor as ce,
+        change_detector as cd, change_events_writer as ew, chip_extractor as ce,
         lb_parcels, multimodal_classifier as mc, permit_matcher as pm,
     )
 
@@ -371,6 +388,18 @@ def test_full_pipeline_e2e_with_mocks(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mc, "classify", fake_classify)
     monkeypatch.setattr(pm, "has_permit", lambda apn, s, e: False)
 
+    # Stub the BQ writer — tests must not touch the real change_events table.
+    persisted_rows: list[dict] = []
+
+    async def fake_persist(detections, year_a, year_b):
+        persisted_rows.extend(
+            ew._row_for(d, year_a, year_b) for d in detections
+        )
+        non_null = [r for r in persisted_rows if r is not None]
+        return len(non_null), len(persisted_rows) - len(non_null)
+
+    monkeypatch.setattr(ew, "persist_detections", fake_persist)
+
     with TestClient(app) as client:
         r = client.post(
             "/api/v1/detect-changes",
@@ -390,6 +419,11 @@ def test_full_pipeline_e2e_with_mocks(monkeypatch: pytest.MonkeyPatch) -> None:
     # Truth-first surface: every gate breakdown carries the raw input.
     assert d["gates"]["embedding_distance"]["raw_input"] == 0.62
     assert d["gates"]["no_permit"]["raw_input"] is False  # has_permit_result=False -> fires
+    # Persistence contract: this detection has final_score!=None so it was persisted.
+    assert body["persisted_rows"] == 1
+    assert body["persistence_skipped"] == 0
+    assert persisted_rows[0]["confidence_score"] == 1.0
+    assert persisted_rows[0]["permit_check_status"] == "no_permit_in_window"
 
 
 # --- 7. Benchmark gate (smoke set vs customer-facing benchmark) ----------

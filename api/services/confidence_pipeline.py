@@ -19,6 +19,7 @@ written to catch.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -53,6 +54,12 @@ class ConfidenceResult:
 def _gate_embedding(distance: float | None) -> GateOutcome:
     if distance is None:
         return GateOutcome(None, None, "alphaearth distance unavailable")
+    # NaN means the cosine computation failed (zero-norm vector). Python's
+    # `float('nan') > 0.4` is False, which would silently mark the gate
+    # 'failed' — a counter-evidence vote. NaN actually means 'we couldn't
+    # compute it', i.e. unavailable. Surface as None (Rule 3).
+    if math.isnan(distance):
+        return GateOutcome(None, None, "distance NaN — embedding pair invalid")
     fired = distance > ALPHAEARTH_DISTANCE_THRESHOLD
     return GateOutcome(fired, distance,
                        f"distance={distance:.3f} vs threshold {ALPHAEARTH_DISTANCE_THRESHOLD}")

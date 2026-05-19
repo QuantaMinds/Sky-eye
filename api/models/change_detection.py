@@ -64,3 +64,12 @@ class DetectChangesResponse(BaseModel):
     candidates_considered: int
     detections_above_threshold: int
     detections: list[Detection]
+    persisted_rows: int = Field(
+        description="Rows actually written to leadlens.change_events. "
+                    "Less than detections_above_threshold when some had "
+                    "final_score=None (truth-first: no fake confidence persisted)."
+    )
+    persistence_skipped: int = Field(
+        description="Detections returned in the response but NOT persisted "
+                    "(missing NOT NULL fields — e.g. final_score=None)."
+    )

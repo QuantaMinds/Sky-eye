@@ -32,13 +32,16 @@ export function PrintButton({ apn }: Props) {
       const disposition = response.headers.get("Content-Disposition")
       let filename = "lead_report.pdf"
       if (disposition && disposition.includes("filename=")) {
-        filename = disposition.split("filename=")[1].replace(/"/g, "")
+        const match = disposition.match(/filename="?([^";]+)"?/)
+        if (match && match[1]) {
+          filename = match[1]
+        }
       }
       a.download = filename
       document.body.appendChild(a)
       a.click()
       a.remove()
-      window.URL.revokeObjectURL(url)
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000)
     } catch (error) {
       console.error("Error downloading PDF:", error)
       alert("Failed to download report. Please try again.")

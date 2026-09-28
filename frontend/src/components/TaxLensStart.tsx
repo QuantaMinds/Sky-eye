@@ -1,27 +1,73 @@
 import { useState, useEffect } from "react"
+import { getEnvConfig } from "@/lib/env"
 
 interface Props {
   onBack: () => void
 }
 
+interface Detection {
+  apn: string
+  final_score: number | null
+}
+
+interface DetectChangesResponse {
+  candidates_considered: number
+  detections: Detection[]
+  year_a: number
+  year_b: number
+}
+
 export function TaxLensStart({ onBack }: Props) {
   const [stage, setStage] = useState<"idle" | "scanning" | "complete">("idle")
+  const [result, setResult] = useState<DetectChangesResponse | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (stage === "scanning") {
-      const t = setTimeout(() => {
-        setStage("complete")
-      }, 2000)
-      return () => clearTimeout(t)
+      const config = getEnvConfig()
+      // Long Beach bounding box
+      const payload = {
+        bbox: [-118.25, 33.75, -118.10, 33.85],
+        year_a: 2023,
+        year_b: 2026,
+        top_n: 150,
+        min_confidence: 0.0,
+      }
+
+      fetch(`${config.apiBaseUrl}/detect-changes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then(async (r) => {
+          if (!r.ok) {
+            const errText = await r.text()
+            throw new Error(`API error: ${r.status} ${errText}`)
+          }
+          return r.json()
+        })
+        .then((data: DetectChangesResponse) => {
+          setResult(data)
+          setStage("complete")
+        })
+        .catch((e) => {
+          console.error("Scan failed", e)
+          setError(e.message || "An unknown error occurred during scanning.")
+          setStage("idle")
+        })
     }
   }, [stage])
 
-  if (stage === "complete") {
+  if (stage === "complete" && result) {
+    const high = result.detections.filter(d => d.final_score !== null && d.final_score >= 0.8)
+    const med = result.detections.filter(d => d.final_score !== null && d.final_score >= 0.5 && d.final_score < 0.8)
+    const low = result.detections.filter(d => d.final_score === null || d.final_score < 0.5)
+
     return (
       <div className="min-h-screen bg-background text-foreground animate-in fade-in duration-500">
         <header className="mx-auto max-w-5xl px-4 py-8">
           <button
-            onClick={() => setStage("idle")}
+            onClick={() => { setResult(null); setStage("idle") }}
             className="mb-8 text-sm font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-2 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -32,8 +78,8 @@ export function TaxLensStart({ onBack }: Props) {
 
           <div className="rounded-2xl border border-border bg-card p-6 md:p-8 shadow-sm">
             <h1 className="text-2xl font-bold tracking-tight">Long Beach</h1>
-            <p className="text-sm text-muted-foreground mt-1">106,336 parcels scanned</p>
-            <p className="text-sm text-muted-foreground">Compared imagery: May 2023 → April 2026</p>
+            <p className="text-sm text-muted-foreground mt-1">{result.candidates_considered} parcels scanned</p>
+            <p className="text-sm text-muted-foreground">Compared imagery: May {result.year_a} → April {result.year_b}</p>
 
             <div className="mt-8 space-y-3">
               <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 p-4 transition-colors hover:bg-primary/10">
@@ -42,7 +88,7 @@ export function TaxLensStart({ onBack }: Props) {
                   <span className="font-semibold">High confidence flags (&gt;80%)</span>
                 </div>
                 <div className="flex items-center gap-6">
-                  <span className="font-mono text-sm text-muted-foreground">12 parcels</span>
+                  <span className="font-mono text-sm text-muted-foreground">{high.length} parcels</span>
                   <button className="text-sm font-medium text-primary hover:underline" onClick={() => alert("Mock: show table")}>Show me</button>
                 </div>
               </div>
@@ -53,7 +99,7 @@ export function TaxLensStart({ onBack }: Props) {
                   <span className="font-medium">Medium confidence (50-80%)</span>
                 </div>
                 <div className="flex items-center gap-6">
-                  <span className="font-mono text-sm text-muted-foreground">38 parcels</span>
+                  <span className="font-mono text-sm text-muted-foreground">{med.length} parcels</span>
                   <button className="text-sm font-medium text-primary hover:underline" onClick={() => alert("Mock: show table")}>Show me</button>
                 </div>
               </div>
@@ -64,7 +110,7 @@ export function TaxLensStart({ onBack }: Props) {
                   <span className="text-muted-foreground">Low confidence (&lt;50%)</span>
                 </div>
                 <div className="flex items-center gap-6">
-                  <span className="font-mono text-sm text-muted-foreground">117 parcels</span>
+                  <span className="font-mono text-sm text-muted-foreground">{low.length} parcels</span>
                   <span className="text-sm text-muted-foreground/50 pr-4">[hidden]</span>
                 </div>
               </div>
@@ -112,8 +158,9 @@ export function TaxLensStart({ onBack }: Props) {
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
             This will compare May 2023 satellite imagery to April 2026 imagery across all 106,336 parcels to detect new structures, and cross-reference with the permit database.
           </p>
+          {error && <p className="text-sm text-destructive font-medium">{error}</p>}
           <button
-            onClick={() => setStage("scanning")}
+            onClick={() => { setError(null); setStage("scanning"); }}
             className="inline-flex items-center justify-center rounded-md bg-primary px-8 py-3 text-sm font-bold text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             Start Citywide Scan
@@ -123,3 +170,4 @@ export function TaxLensStart({ onBack }: Props) {
     </div>
   )
 }
+

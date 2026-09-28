@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Printer, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { getEnvConfig } from "@/lib/env"
@@ -9,6 +9,13 @@ interface Props {
 
 export function PrintButton({ apn }: Props) {
   const [isLoading, setIsLoading] = useState(false)
+  const objectUrls = useRef<string[]>([])
+
+  useEffect(() => {
+    return () => {
+      objectUrls.current.forEach((url) => window.URL.revokeObjectURL(url))
+    }
+  }, [])
 
   const handleDownload = async () => {
     if (!apn) return
@@ -27,6 +34,8 @@ export function PrintButton({ apn }: Props) {
 
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
+      objectUrls.current.push(url)
+
       const a = document.createElement("a")
       a.href = url
       const disposition = response.headers.get("Content-Disposition")
@@ -41,7 +50,6 @@ export function PrintButton({ apn }: Props) {
       document.body.appendChild(a)
       a.click()
       a.remove()
-      setTimeout(() => window.URL.revokeObjectURL(url), 1000)
     } catch (error) {
       console.error("Error downloading PDF:", error)
       alert("Failed to download report. Please try again.")

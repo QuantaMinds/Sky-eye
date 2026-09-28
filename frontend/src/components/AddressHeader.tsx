@@ -38,7 +38,7 @@ export function AddressHeader({ result }: Props) {
           <StreamPill stream={result.stream} />
           <ScoreBadge score={result.score} />
           <div className="flex gap-2">
-            <PrintButton />
+            <PrintButton apn={result.apn} />
             <ShareLinkButton />
           </div>
         </div>
